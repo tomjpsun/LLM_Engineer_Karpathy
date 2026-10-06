@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ch5 監督式微調（SFT）互動學習</title>
+<style>
+:root{
+  --ink:#1e293b; --muted:#64748b; --bg:#f6f7fb; --card:#ffffff; --line:#e2e8f0;
+  --accent:#4f46e5; --accent-soft:#eef2ff;
+  --pa:#2563eb; --pb:#059669; --pc:#d97706; --pd:#7c3aed;
+  --bad:#dc2626; --warnb:#b45309; --good:#059669; --eos:#dc2626; --tok:#0e7490;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);line-height:1.65}
+header.top{background:linear-gradient(135deg,#312e81,#4f46e5);color:#fff;padding:28px 20px 20px}
+header.top h1{margin:0 0 4px;font-size:26px}
+header.top p{margin:0;color:#c7d2fe;font-size:14px}
+nav.tabs{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);display:flex;gap:2px;overflow-x:auto;padding:0 12px}
+nav.tabs a{padding:10px 14px;font-size:14px;color:var(--muted);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+nav.tabs a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 22px 24px;margin-top:22px;scroll-margin-top:60px}
+section h2{margin:0 0 6px;font-size:20px}
+section h2 .n{display:inline-block;width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;text-align:center;line-height:28px;font-size:14px;margin-right:8px;vertical-align:2px}
+section>p.lead{margin:0 0 16px;color:var(--muted);font-size:14px}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:12px;background:#fbfcfe}
+.card h3{margin:0 0 8px;font-size:15px}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#eef2f7;border:1px solid var(--line);border-radius:4px;padding:1px 5px;word-break:break-all}
+.note{font-size:12.5px;color:var(--muted);margin-top:8px}
+/* pipeline */
+.phase{margin-top:14px}
+.phLabel{display:inline-block;color:#fff;font-size:12.5px;font-weight:600;border-radius:6px;padding:3px 10px;margin-bottom:8px}
+.nodes{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.node{border:1.5px solid var(--line);background:#fff;border-radius:8px;padding:7px 12px;font-size:13.5px;cursor:pointer;color:var(--ink);font-family:inherit}
+.node:hover{border-color:var(--accent)}
+.node.active{color:#fff;border-color:transparent}
+.node.a{border-left:4px solid var(--pa)} .node.a.active{background:var(--pa)}
+.node.b{border-left:4px solid var(--pb)} .node.b.active{background:var(--pb)}
+.node.c{border-left:4px solid var(--pc)} .node.c.active{background:var(--pc)}
+.node.d{border-left:4px solid var(--pd)} .node.d.active{background:var(--pd)}
+#pipeDetail{margin-top:16px;border:1px dashed var(--line);border-radius:10px;padding:14px 16px;font-size:14px}
+#pipeDetail h3{margin:0 0 6px;font-size:16px}
+#pipeDetail .k{color:var(--muted);font-size:13px}
+#pipeDetail code{display:inline-block;margin-top:4px}
+/* template lab */
+.lab{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:760px){.lab{grid-template-columns:1fr}}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:13px;color:var(--muted);margin-bottom:3px}
+textarea,input[type=text],select{width:100%;font-family:inherit;font-size:14px;padding:7px 9px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink)}
+textarea{resize:vertical}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button.btn{font-family:inherit;font-size:13.5px;padding:7px 13px;border-radius:8px;border:1.5px solid var(--accent);background:#fff;color:var(--accent);cursor:pointer}
+button.btn:hover{background:var(--accent-soft)}
+button.btn.primary{background:var(--accent);color:#fff}
+button.btn.primary:hover{background:#4338ca}
+.check{display:flex;align-items:center;gap:6px;font-size:13.5px}
+pre.code{background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:12.8px;line-height:1.7;white-space:pre-wrap;word-break:break-word;margin:0;min-height:200px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.tok{color:#7dd3fc;font-weight:600}
+.eos{color:#fda4af;font-weight:700;background:rgba(244,63,94,.18);border-radius:3px;padding:0 2px}
+.dim{color:#94a3b8}
+.ws-sp{color:#64748b}.ws-nl{color:#f59e0b;font-weight:600}
+.warnbox{margin-top:10px;border-left:4px solid var(--bad);background:#fef2f2;padding:8px 12px;font-size:13.5px;border-radius:0 8px 8px 0}
+.okbox{margin-top:10px;border-left:4px solid var(--good);background:#ecfdf5;padding:8px 12px;font-size:13.5px;border-radius:0 8px 8px 0}
+/* memory */
+.memctl{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+.memctl .field{margin-bottom:0}
+input[type=range]{width:260px}
+.memsize{font-size:20px;font-weight:700;color:var(--accent);min-width:120px;display:inline-block}
+.bar-row{display:grid;grid-template-columns:92px 1fr 84px;gap:10px;align-items:center;margin-top:10px;font-size:13.5px}
+.bar-track{position:relative;height:20px;background:#eef2f7;border-radius:6px;overflow:visible}
+.bar{position:absolute;left:0;top:0;height:100%;border-radius:6px;transition:width .25s}
+.bar-track .gpu{position:absolute;top:-4px;bottom:-4px;width:2px;background:#94a3b8}
+.bar-track .gpu i{position:absolute;top:-16px;left:-14px;font-style:normal;font-size:10.5px;color:var(--muted);white-space:nowrap}
+.bar-val{font-variant-numeric:tabular-nums;font-weight:600;text-align:right}
+.memrow.sel .bar-label{color:var(--accent);font-weight:700}
+.memverdict{margin-top:14px;font-size:14px}
+.footnote{font-size:12px;color:var(--muted);margin-top:10px}
+/* training sim */
+canvas{width:100%;height:300px;display:block;border:1px solid var(--line);border-radius:10px;background:#fff}
+.simctl{display:flex;gap:18px;flex-wrap:wrap;margin:12px 0}
+.simctl .field{margin-bottom:0}
+.status{margin-top:12px;padding:10px 14px;border-radius:10px;font-size:14px}
+.status.good{background:#ecfdf5;border:1px solid #a7f3d0}
+.status.warn{background:#fffbeb;border:1px solid #fde68a}
+.status.bad{background:#fef2f2;border:1px solid #fecaca}
+.legend{display:flex;gap:16px;font-size:12.5px;color:var(--muted);margin-top:8px}
+.legend i{display:inline-block;width:18px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+/* decision */
+.decq{font-size:16px;font-weight:600;margin:6px 0 12px}
+.decbtns{display:flex;gap:10px;flex-wrap:wrap}
+.decend{padding:14px 16px;border-radius:10px;font-size:14.5px}
+.decend.ok{background:#ecfdf5;border:1px solid #a7f3d0}
+.decend.warn{background:#fffbeb;border:1px solid #fde68a}
+.crumbs{font-size:12.5px;color:var(--muted);margin-bottom:10px;min-height:18px}
+/* quiz */
+.q{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:12px}
+.q p.qtext{margin:0 0 8px;font-weight:600;font-size:14.5px}
+.q label{display:block;font-size:14px;padding:4px 0;cursor:pointer}
+.q .fb{margin-top:8px;font-size:13.5px;padding:8px 12px;border-radius:8px;display:none}
+.q .fb.right{display:block;background:#ecfdf5;border:1px solid #a7f3d0}
+.q .fb.wrong{display:block;background:#fef2f2;border:1px solid #fecaca}
+#quizScore{margin-top:14px;font-size:16px;font-weight:700}
+/* animated explainer */
+.anim-shell{border:1px solid #c7d2fe;border-radius:12px;overflow:hidden;background:linear-gradient(145deg,#f8faff,#eef2ff)}
+.anim-top{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 16px;background:#fff;border-bottom:1px solid #dbeafe;flex-wrap:wrap}
+.anim-top strong{font-size:14px}
+.anim-step-list{display:flex;gap:5px;flex-wrap:wrap}
+.anim-step-list button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 9px;color:var(--muted);font:inherit;font-size:11.5px;cursor:pointer}
+.anim-step-list button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+.anim-progress{height:4px;background:#e0e7ff}
+.anim-progress span{display:block;height:100%;width:20%;background:linear-gradient(90deg,#4f46e5,#06b6d4);transition:width .35s ease}
+.anim-stage{padding:18px;min-height:276px}
+.anim-scene{display:none;min-height:238px;align-items:center;justify-content:center}
+.anim-scene.active{display:flex;animation:sceneIn .45s ease both}
+.anim-grid{width:100%;display:grid;grid-template-columns:minmax(0,1fr) 54px minmax(0,1fr) 54px minmax(0,1fr);gap:10px;align-items:center}
+.anim-card{min-height:132px;padding:14px;border:1px solid #cbd5e1;border-radius:12px;background:#fff;box-shadow:0 5px 16px rgba(30,41,59,.06);position:relative}
+.anim-card h3{margin:0 0 8px;font-size:14px}
+.anim-card p{margin:4px 0;color:var(--muted);font-size:13px}
+.anim-card.source{border-top:4px solid #0ea5e9}
+.anim-card.dataset{border-top:4px solid #10b981}
+.anim-card.model{border-top:4px solid #6366f1}
+.anim-card.answer{border-top:4px solid #f59e0b}
+.anim-arrow{height:3px;background:#c7d2fe;position:relative;border-radius:2px}
+.anim-arrow:after{content:"";position:absolute;right:-1px;top:-4px;border-left:8px solid #818cf8;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.anim-arrow .dot{position:absolute;left:0;top:-4px;width:10px;height:10px;border-radius:50%;background:#06b6d4;animation:travel 1.5s ease-in-out infinite}
+.anim-tokens{display:flex;gap:5px;flex-wrap:wrap;margin-top:10px}
+.anim-token{display:inline-block;padding:3px 7px;border-radius:6px;background:#e0f2fe;color:#075985;font:12px ui-monospace,monospace;animation:tokenIn .5s both}
+.anim-token:nth-child(2){animation-delay:.12s}.anim-token:nth-child(3){animation-delay:.24s}.anim-token:nth-child(4){animation-delay:.36s}
+.anim-token.target{background:#dcfce7;color:#166534}
+.anim-token.end{background:#ffe4e6;color:#be123c;font-weight:700}
+.anim-model{display:flex;align-items:center;justify-content:center;gap:8px;margin:10px auto 4px;max-width:240px}
+.anim-weights{padding:14px 10px;border-radius:8px;background:#e2e8f0;color:#475569;font-size:12px;text-align:center;flex:1}
+.anim-adapter{padding:10px 8px;border-radius:8px;background:#ede9fe;color:#6d28d9;font-size:12px;text-align:center;border:1px solid #c4b5fd;animation:adapterPulse 1.8s ease-in-out infinite}
+.anim-loss{height:10px;background:#e2e8f0;border-radius:8px;overflow:hidden;margin:12px 0 4px}
+.anim-loss span{display:block;width:86%;height:100%;background:linear-gradient(90deg,#fb7185,#22c55e);border-radius:8px;animation:lossFall 3s ease-in-out infinite alternate}
+.anim-template{width:min(680px,100%);border:2px solid #a5b4fc;border-radius:12px;padding:15px;background:#fff;box-shadow:0 6px 18px rgba(79,70,229,.08)}
+.anim-template .line{padding:5px 8px;border-radius:6px;margin:4px 0;background:#f8fafc;font:13px ui-monospace,monospace;animation:tokenIn .5s both}
+.anim-template .line.prompt{border-left:4px solid #38bdf8}.anim-template .line.response{border-left:4px solid #34d399}.anim-template .line.eosline{border-left:4px solid #fb7185;color:#be123c}
+.anim-caption{padding:14px 16px;background:#fff;border-top:1px solid #dbeafe;min-height:94px}
+.anim-caption h3{margin:0 0 4px;font-size:16px;color:#3730a3}
+.anim-caption p{margin:0;color:#475569;font-size:14px}
+.anim-controls{display:flex;gap:8px;align-items:center;padding:0 16px 14px;background:#fff;flex-wrap:wrap}
+.anim-controls .btn{min-width:92px}
+.anim-hint{margin-left:auto;font-size:12px;color:var(--muted)}
+@keyframes sceneIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes travel{0%{left:0;opacity:.3}15%{opacity:1}85%{opacity:1}100%{left:calc(100% - 10px);opacity:.3}}
+@keyframes tokenIn{from{opacity:0;transform:translateY(8px) scale(.94)}to{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes adapterPulse{0%,100%{box-shadow:0 0 0 0 rgba(139,92,246,.15);transform:scale(1)}50%{box-shadow:0 0 0 5px rgba(139,92,246,.12);transform:scale(1.04)}}
+@keyframes lossFall{from{width:86%}to{width:24%}}
+@media(max-width:700px){.anim-stage{padding:12px;min-height:320px}.anim-scene{min-height:292px}.anim-grid{grid-template-columns:1fr;gap:8px}.anim-card{min-height:0;padding:10px}.anim-arrow{width:3px;height:24px;margin:auto}.anim-arrow:after{right:-4px;top:auto;bottom:-1px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid #818cf8;border-bottom:0}.anim-arrow .dot{left:-4px;top:0;animation-name:travelDown}.anim-hint{margin-left:0;width:100%}}
+@keyframes travelDown{0%{top:0;opacity:.3}15%{opacity:1}85%{opacity:1}100%{top:calc(100% - 10px);opacity:.3}}
+@media(prefers-reduced-motion:reduce){.anim-scene.active,.anim-token,.anim-arrow .dot,.anim-adapter,.anim-loss span{animation:none!important;transition:none!important}}
+footer{max-width:980px;margin:30px auto 40px;padding:0 16px;font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>第 5 章 · 監督式微調（SFT）</h1>
+  <p>LLM Engineer's Handbook（Iusztin &amp; Labonne）· 互動學習頁 · 點節點、拉滑桿、作答測驗</p>
+</header>
+
+<nav class="tabs">
+  <a href="#animation">動畫導覽</a>
+  <a href="#overview">總覽</a>
+  <a href="#pipeline">流程地圖</a>
+  <a href="#template">模板實驗室</a>
+  <a href="#memory">記憶體計算機</a>
+  <a href="#training">訓練曲線模擬</a>
+  <a href="#decision">該不該微調</a>
+  <a href="#quiz">隨堂測驗</a>
+</nav>
+
+<main>
+<!-- ===================== 動畫導覽 ===================== -->
+<section id="animation">
+  <h2><span class="n">▶</span>動畫導覽：SFT 如何把「接龍」變成「助理」</h2>
+  <p class="lead">播放 5 個場景：基座模型 → 指令資料 → 模板 → LoRA 訓練 → 推論。動畫是概念示意，不是實際訓練數據。</p>
+  <div class="anim-shell" id="animPlayer" data-step="0">
+    <div class="anim-top">
+      <strong>學習流程</strong>
+      <div class="anim-step-list" id="animStepList" aria-label="動畫步驟"></div>
+    </div>
+    <div class="anim-progress" aria-hidden="true"><span id="animProgress"></span></div>
+    <div class="anim-stage" aria-live="polite">
+      <div class="anim-scene active" data-scene="0">
+        <div class="anim-grid">
+          <div class="anim-card source"><h3>預訓練文本</h3><p>模型讀取大量文字</p><div class="anim-tokens"><span class="anim-token">語言</span><span class="anim-token">模型</span><span class="anim-token">會</span><span class="anim-token">預測</span></div></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card model"><h3>基座模型</h3><p>依前文預測下一個 token</p><div class="anim-model"><div class="anim-weights">既有知識<br>模型權重</div></div></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card answer"><h3>接龍式續寫</h3><p>「語言模型會預測……」</p><div class="anim-tokens"><span class="anim-token target">下一個</span><span class="anim-token target">詞</span><span class="anim-token target">。</span></div></div>
+        </div>
+      </div>
+      <div class="anim-scene" data-scene="1">
+        <div class="anim-grid">
+          <div class="anim-card source"><h3>作者文章區塊</h3><p>文章提供領域內容與文風。</p><div class="anim-tokens"><span class="anim-token">清洗</span><span class="anim-token">切塊</span><span class="anim-token">1000–2000 字</span></div></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card model"><h3>LLM 產生器</h3><p>每個區塊生成多個自足任務。</p><div class="anim-model"><div class="anim-weights">文章素材</div><div class="anim-adapter">生成指令</div></div></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card dataset"><h3>示範資料集</h3><p>正確 · 多樣 · 困難</p><div class="anim-tokens"><span class="anim-token">Instruction</span><span class="anim-token target">Output</span></div></div>
+        </div>
+      </div>
+      <div class="anim-scene" data-scene="2">
+        <div class="anim-template">
+          <h3 style="margin:0 0 8px;font-size:14px">每筆樣本 → 固定模板字串</h3>
+          <div class="line prompt">### Instruction: 把句子翻成英文。</div>
+          <div class="line prompt">### Input: 今天天氣很好。</div>
+          <div class="line response">### Response: The weather is nice today.</div>
+          <div class="line eosline">&lt;|end_of_text|&gt; ← EOS：告訴模型答案結束</div>
+        </div>
+      </div>
+      <div class="anim-scene" data-scene="3">
+        <div class="anim-grid">
+          <div class="anim-card dataset"><h3>訓練序列</h3><p>提示 + 標準答案 + EOS</p><div class="anim-tokens"><span class="anim-token">Instruction</span><span class="anim-token target">正確答案</span><span class="anim-token end">EOS</span></div></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card model"><h3>模型逐 token 學習</h3><div class="anim-model"><div class="anim-weights">基座權重<br>凍結</div><div class="anim-adapter">LoRA<br>可訓練</div></div><p>只更新小型 adapter（書中 r=32）</p></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card answer"><h3>訓練目標</h3><p>預測示範序列中的下一 token</p><div class="anim-loss"><span></span></div><p>loss 示意下降（非實際數值）</p></div>
+        </div>
+      </div>
+      <div class="anim-scene" data-scene="4">
+        <div class="anim-grid">
+          <div class="anim-card source"><h3>新指令</h3><p>推論時只給模型問題，不附標準答案。</p><div class="anim-tokens"><span class="anim-token">請摘要這段文字</span></div></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card model"><h3>微調後模型</h3><div class="anim-model"><div class="anim-weights">基座<br>＋</div><div class="anim-adapter">已學到<br>的行為</div></div><p>模板必須與訓練一致。</p></div>
+          <div class="anim-arrow"><span class="dot"></span></div>
+          <div class="anim-card dataset"><h3>助理回覆</h3><p>模型照指令生成，遇 EOS 停止。</p><div class="anim-tokens"><span class="anim-token target">重點摘要</span><span class="anim-token end">EOS</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="anim-caption"><h3 id="animTitle"></h3><p id="animCopy"></p></div>
+    <div class="anim-controls">
+      <button class="btn primary" id="animPlay" aria-label="播放動畫">自動播放</button>
+      <button class="btn" id="animPrev">← 上一步</button>
+      <button class="btn" id="animNext">下一步 →</button>
+      <button class="btn" id="animReplay">從頭重播</button>
+      <span class="anim-hint" id="animCounter"></span>
+    </div>
+  </div>
+  <div class="note">動畫重點：SFT 不是把答案硬塞進模型，而是用高品質示範，訓練模型在給定指令後，逐 token 產生合適回覆。模板、EOS、資料品質都會影響結果。</div>
+</section>
+
+<!-- ===================== 1 總覽 ===================== -->
+
+<section id="overview">
+  <h2><span class="n">1</span>總覽：基座模型 → 助理</h2>
+  <p class="lead">SFT 用「指令—答案」配對，把只會預測下一個詞的基座模型，變成會聽指令、具備領域知識的助理。</p>
+
+  <div class="card">
+    <h3>好樣本的三個特性</h3>
+    <p style="margin:0;font-size:14px">
+      <b style="color:var(--good)">正確</b>（答案無誤且對應指令） ·
+      <b style="color:var(--pc)">多樣</b>（涵蓋主題、長度、文體） ·
+      <b style="color:var(--bad)">困難</b>（含多步驟推理）。
+      核心規則：<b>品質重於數量</b>。
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>名詞速查</h3>
+    <table>
+      <tr><th style="width:180px">名詞</th><th>白話解釋</th></tr>
+      <tr><td>指令（Instruction）</td><td>給模型的輸入</td></tr>
+      <tr><td>答案（Output）</td><td>模型應輸出的回覆</td></tr>
+      <tr><td>系統提示（System）</td><td>全域行為規則</td></tr>
+      <tr><td>對話模板</td><td>system / user / assistant 的固定格式</td></tr>
+      <tr><td>Alpaca 格式</td><td>欄位：<code>instruction</code>、<code>input</code>（可省略）、<code>output</code></td></tr>
+      <tr><td>ShareGPT / OpenAI 格式</td><td>訊息清單，可做多輪對話</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>樣本數量指引</h3>
+    <table>
+      <tr><th>情境</th><th>建議數量</th></tr>
+      <tr><td>通用助理</td><td>約 1,000,000 筆</td></tr>
+      <tr><td>單一任務（翻譯、摘要）</td><td>100–100,000 筆</td></tr>
+      <tr><td>大模型（約 70B）</td><td>1,000 筆高品質樣本即可見效</td></tr>
+      <tr><td>小模型（約 7B）</td><td>需更多樣本學對話格式</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 2 流程地圖 ===================== -->
+<section id="pipeline">
+  <h2><span class="n">2</span>流程地圖：點任一節點看細節</h2>
+  <p class="lead">四個流程：A 製作指令資料集 → B 清洗 → C 增加資料 → D 微調。節點對應書中步驟與 <code>repo/</code> 裡的實際程式。</p>
+  <div id="pipeWrap"></div>
+  <div id="pipeDetail"><span class="k">👆 點任一節點，這裡顯示細節。</span></div>
+</section>
+
+<!-- ===================== 3 模板實驗室 ===================== -->
+<section id="template">
+  <h2><span class="n">3</span>模板實驗室：一格空格錯誤即失敗</h2>
+  <p class="lead">訓練樣本會被格式化成模板字串。左邊改文字，右邊即時看渲染結果。開「顯示空白字元」檢查每個空格。</p>
+  <div class="lab">
+    <div>
+      <div class="field">
+        <label for="tIns">Instruction（指令）</label>
+        <textarea id="tIns" rows="2">把下列句子翻成英文。</textarea>
+      </div>
+      <div class="field">
+        <label for="tInp">Input（可省略）</label>
+        <input type="text" id="tInp" value="今天天氣很好。">
+      </div>
+      <div class="field">
+        <label for="tOut">Output（答案）</label>
+        <textarea id="tOut" rows="2">The weather is nice today.</textarea>
+      </div>
+      <div class="field">
+        <label for="tTpl">模板</label>
+        <select id="tTpl">
+          <option value="alpaca">Alpaca（書中 SFT 用的格式）</option>
+          <option value="chatml">ChatML（多輪對話格式）</option>
+        </select>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="tEos" checked> 結尾加 EOS</label>
+        <label class="check"><input type="checkbox" id="tWs"> 顯示空白字元（· = 空格 ↵ = 換行）</label>
+      </div>
+      <div class="row">
+        <button class="btn" id="pTranslate">範例：翻譯</button>
+        <button class="btn" id="pSum">範例：摘要</button>
+        <span id="tCount" style="font-size:12.5px;color:var(--muted)"></span>
+      </div>
+      <div id="tplWarn"></div>
+    </div>
+    <div>
+      <pre class="code" id="tplOut"></pre>
+      <div class="note">書中訓練用的是 Alpaca 模板 + <code>tokenizer.eos_token</code>（Llama 3.1 基座為 <code>&lt;|end_of_text|&gt;</code>）。推理時用<b>一模一樣</b>的模板；差一個空格，模型行為就會異常或不停。</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 4 記憶體計算機 ===================== -->
+<section id="memory">
+  <h2><span class="n">4</span>方法選擇：全量 vs LoRA vs QLoRA</h2>
+  <p class="lead">拉滑桿換模型大小，看三種方法各要多少 GPU 記憶體、哪張卡跑得動。</p>
+  <div class="memctl">
+    <div class="field">
+      <label for="mSize">模型大小</label>
+      <input type="range" id="mSize" min="0" max="100" value="56">
+      <div class="note" style="margin-top:2px">0.5B – 70B（對數刻度）</div>
+    </div>
+    <div><span class="memsize" id="mSizeVal">8.0B</span><br><button class="btn" id="mLlama">設成 Llama 3.1 8B</button></div>
+  </div>
+  <div id="memBars"></div>
+  <div class="memverdict" id="memVerdict"></div>
+  <div class="footnote">估算＝權重＋優化器狀態，不含 activations／KV cache／框架開銷（實際再加 2–5 成）。<br>
+  全量 ≈ 16 bytes/參數（fp32 權重 4＋梯度 4＋Adam 狀態 8）。LoRA ≈ bf16 凍結權重 2＋r=32 適配器開銷。QLoRA ≈ 4-bit 權重 0.5＋適配器開銷。7B 全量 7×16=112 GB，與書中表格一致。</div>
+</section>
+
+<!-- ===================== 5 訓練曲線模擬 ===================== -->
+<section id="training">
+  <h2><span class="n">5</span>訓練曲線模擬：讀懂損失圖</h2>
+  <p class="lead">拉動學習率、輪數、資料量，看訓練損失（實線）與驗證損失（虛線）怎麼變。判讀規則：損失要降、驗證損失不可升、LR 太高會震盪。</p>
+  <div class="simctl">
+    <div class="field">
+      <label for="sLr">學習率：<b id="sLrVal">3e-4</b></label>
+      <input type="range" id="sLr" min="0" max="100" value="74">
+    </div>
+    <div class="field">
+      <label for="sEp">訓練輪數：<b id="sEpVal">3</b></label>
+      <input type="range" id="sEp" min="1" max="5" value="3">
+    </div>
+    <div class="field">
+      <label for="sDs">資料量</label>
+      <select id="sDs">
+        <option value="0">100 筆（極小）</option>
+        <option value="1">400 筆（dummy 模式）</option>
+        <option value="2" selected>3,335 筆（llmtwin）</option>
+        <option value="3">10,000 筆（＋FineTome）</option>
+      </select>
+    </div>
+  </div>
+  <canvas id="simCanvas"></canvas>
+  <div class="legend"><span><i style="background:#4f46e5"></i>訓練損失</span><span><i style="background:#e11d48;height:0;border-top:3px dashed #e11d48"></i>驗證損失</span></div>
+  <div class="status good" id="simStatus"></div>
+  <div class="card" style="margin-top:14px">
+    <h3>訓後檢查清單（書中 §10）</h3>
+    <table>
+      <tr><td>答案在 EOS 停止</td><td>無無限生成</td></tr>
+      <tr><td>模板符號完全正確</td><td>一格空格錯誤即失敗</td></tr>
+      <tr><td>訓練損失分三段下降</td><td>對應 3 輪</td></tr>
+      <tr><td>驗證損失未持續上升</td><td>上升即過擬合</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3>書中實際超參數（<code>repo/llm_engineering/model/finetuning/finetune.py</code>）</h3>
+    <table>
+      <tr><th>參數</th><th>值</th><th>參數</th><th>值</th></tr>
+      <tr><td>learning_rate</td><td>3e-4</td><td>epochs</td><td>3</td></tr>
+      <tr><td>batch × accum</td><td>2 × 8（＝16）</td><td>packing</td><td>True</td></tr>
+      <tr><td>optimizer</td><td>adamw_8bit</td><td>weight_decay</td><td>0.01</td></tr>
+      <tr><td>scheduler</td><td>linear（warmup 10）</td><td>max_seq_length</td><td>2048</td></tr>
+      <tr><td>LoRA r / α / dropout</td><td>32 / 32 / 0</td><td>target modules</td><td>全部線性層</td></tr>
+      <tr><td>train/test 切分</td><td>95% / 5%</td><td>監控</td><td>Comet ML</td></tr>
+    </table>
+  </div>
+</section>
+
+<!-- ===================== 6 決策流程 ===================== -->
+<section id="decision">
+  <h2><span class="n">6</span>該不該微調？走一遍決策樹</h2>
+  <p class="lead">書中順序：先提示工程 → 量測 → 未達標且資料夠 → 才 SFT。點選項往下走。</p>
+  <div class="card">
+    <div class="crumbs" id="decCrumbs"></div>
+    <div id="decBody"></div>
+    <div class="row"><button class="btn" id="decReset">↺ 重來</button></div>
+  </div>
+</section>
+
+<!-- ===================== 7 測驗 ===================== -->
+<section id="quiz">
+  <h2><span class="n">7</span>隨堂測驗：6 題</h2>
+  <p class="lead">選好按「批改」。答錯會顯示解釋，回對應區塊再看一次。</p>
+  <div id="quizWrap"></div>
+  <div class="row">
+    <button class="btn primary" id="quizSubmit">批改</button>
+    <button class="btn" id="quizReset">重新作答</button>
+  </div>
+  <div id="quizScore"></div>
+</section>
+
+</main>
+
+<footer>
+  資料來源：<code>ch5/Ch5_SFT_STE_Notes.md</code>（你的筆記）＋ <code>repo/llm_engineering/model/finetuning/finetune.py</code> ＋ <code>repo/steps/generate_datasets/</code>。本頁為離線單檔 HTML，直接用瀏覽器開啟。
+</footer>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+/* ============ 動畫導覽 ============ */
+const ANIM_STEPS = [
+  {title:"1 · 基座模型只會接龍", text:"預訓練讓模型學會依前文預測下一個 token。它能續寫文字，但還沒有被示範如何穩定地遵循指令。"},
+  {title:"2 · 把文章變成示範", text:"清洗、切塊後，請 LLM 產生自足的指令—答案配對。人工抽查，並確保答案正確、多樣、有挑戰。"},
+  {title:"3 · 用固定模板包裝", text:"資料會被序列化成訓練模板，答案後加 EOS。訓練與推論時必須使用一致格式，否則模型看到的模式不同。"},
+  {title:"4 · 用示範訓練（SFT）", text:"模型逐 token 預測示範序列的下一個 token，並用 loss 衡量預測與目標的差距。LoRA 凍結基座，只更新小型 adapter。"},
+  {title:"5 · 新指令進來，模型回覆", text:"推論時提供新指令，不提供標準答案。模型依學到的行為生成回覆，並在 EOS 停止。這就是基座模型變成助理的過程。"},
+];
+let animIndex = 0;
+let animTimer = null;
+function renderAnimation(){
+  const player = $("animPlayer");
+  player.dataset.step = animIndex;
+  document.querySelectorAll(".anim-scene").forEach((scene,i)=>scene.classList.toggle("active",i===animIndex));
+  document.querySelectorAll("#animStepList button").forEach((button,i)=>{
+    button.classList.toggle("active",i===animIndex);
+    if(i===animIndex) button.setAttribute("aria-current","step"); else button.removeAttribute("aria-current");
+  });
+  $("animTitle").textContent = ANIM_STEPS[animIndex].title;
+  $("animCopy").textContent = ANIM_STEPS[animIndex].text;
+  $("animProgress").style.width = ((animIndex+1)/ANIM_STEPS.length*100)+"%";
+  $("animCounter").textContent = `${animIndex+1} / ${ANIM_STEPS.length}`;
+  $("animPlay").textContent = animTimer ? "暫停" : animIndex===ANIM_STEPS.length-1 ? "重新播放" : "自動播放";
+  $("animPlay").setAttribute("aria-label",animTimer?"暫停動畫":"自動播放動畫");
+}
+function stopAnimation(){ if(animTimer){clearInterval(animTimer);animTimer=null;} renderAnimation(); }
+function setAnimationStep(index){ stopAnimation(); animIndex=Math.max(0,Math.min(ANIM_STEPS.length-1,index)); renderAnimation(); }
+$("animStepList").innerHTML = ANIM_STEPS.map((step,i)=>`<button type="button" data-step="${i}">${i+1}. ${step.title.split("· ")[1]}</button>`).join("");
+$("animStepList").addEventListener("click",e=>{const b=e.target.closest("[data-step]");if(b)setAnimationStep(+b.dataset.step);});
+$("animPrev").addEventListener("click",()=>setAnimationStep(animIndex-1));
+$("animNext").addEventListener("click",()=>setAnimationStep(animIndex+1));
+$("animReplay").addEventListener("click",()=>{setAnimationStep(0);});
+$("animPlay").addEventListener("click",()=>{
+  if(animTimer){stopAnimation();return;}
+  if(animIndex===ANIM_STEPS.length-1) animIndex=0;
+  renderAnimation();
+  animTimer=setInterval(()=>{
+    if(animIndex>=ANIM_STEPS.length-1){stopAnimation();return;}
+    animIndex++;renderAnimation();
+  },3600);
+  renderAnimation();
+});
+renderAnimation();
+/* ============ 2. 流程地圖 ============ */
+const PHASES = [
+  {id:"a", label:"A · 製作指令資料集", color:"#2563eb"},
+  {id:"b", label:"B · 清洗資料", color:"#059669"},
+  {id:"c", label:"C · 增加資料", color:"#d97706"},
+  {id:"d", label:"D · 微調", color:"#7c3aed"},
+];
+const PIPE = [
+  {ph:"a", t:"蒐集原始文本", d:"用爬蟲抓你自己寫的文章（Medium、GitHub、LinkedIn、自訂來源）。", why:"這些文章之後是指令資料集的素材。", code:"repo/llm_engineering/application/crawlers/ · repo/steps/etl/crawl_links.py"},
+  {ph:"a", t:"清洗文章", d:"刪雜訊字元、修空白與編碼。", why:"髒資料會污染後續每一步。", code:"repo/llm_engineering/application/preprocessing/operations/cleaning.py"},
+  {ph:"a", t:"切塊 1000–2000 字", d:"把文章切成適合 LLM 處理的區塊。", why:"太大超出上下文、太小缺脈絡。", code:"repo/llm_engineering/application/preprocessing/operations/chunking.py"},
+  {ph:"a", t:"LLM 產生指令—答案", d:"每區塊請 LLM 產 5 組配對。指令要自足（禁用「上下文、原文」等詞）。答案模仿原作者文風。用 JSON 模式輸出。", why:"把「作者知識」轉成「指令行為」。成果：3,335 組 → mlabonne/llmtwin。", code:"repo/llm_engineering/application/dataset/generation.py · repo/steps/generate_datasets/create_prompts.py"},
+  {ph:"a", t:"90/10 切分＋上傳", d:"切訓練/測試集，上傳 Hugging Face Hub，開檢視器人工抽查。", why:"測試集之後用於偵測污染與評估。", code:"repo/steps/generate_datasets/push_to_huggingface.py"},
+  {ph:"b", t:"規則過濾", d:"刪過短／過長答案、含禁用詞樣本；檢查程式碼與 JSON 語法。", why:"最便宜的品質防線：先跑規則，再花錢跑模型。", code:"書中流程 B（自行實作）"},
+  {ph:"b", t:"去重", d:"三層：MD5/SHA-256 刪完全重複 → MinHash＋Jaccard 刪近似 → 向量＋餘弦刪同義。", why:"重複樣本放大偏誤、拉高過擬合風險。", code:"書中流程 B"},
+  {ph:"b", t:"去污染", d:"把測試集加入去重輸入；訓練集中與測試集相同的樣本全刪，只留測試副本。", why:"防止模型「背答案」，否則評估分數虛高。", code:"書中流程 B"},
+  {ph:"b", t:"品質評分（可選）", d:"LLM 給 1–4 分、獎勵模型或小型分類器。用 2–3 個評審降低偏誤；隨機調換答案順序修正位置偏誤。", why:"單一評審有偏誤。", code:"書中流程 B"},
+  {ph:"c", t:"生成更多配對", d:"從 5–10 個種子提示，請 LLM 產新配對。", why:"單任務小模型需要更多樣本。", code:"書中流程 C"},
+  {ph:"c", t:"Evol-Instruct 演化", d:"縱向＝加難（加限制、加推理步驟）；橫向＝同領域產稀有指令。", why:"補上「困難」與「多樣」兩個特性。", code:"書中流程 C"},
+  {ph:"c", t:"UltraFeedback 回饋", d:"產多個答案 → 評分 → 只留最佳。", why:"合成資料會複製模型偏誤；生成後務必重跑流程 B。", code:"書中流程 C"},
+  {ph:"d", t:"混入通用資料", d:"合併 llmtwin ＋ mlabonne/FineTome-Alpaca-100k 前 10,000 筆。", why:"通用資料教「聽指令」，領域資料教知識。", code:"finetune.py：dataset1 + dataset2"},
+  {ph:"d", t:"套 Alpaca 模板＋EOS", d:"每筆格式化成模板字串，結尾加 EOS。切分 95% 訓練 / 5% 測試。", why:"模板一格空格錯誤即失敗（見下方「模板實驗室」）。", code:"finetune.py：format_samples_sft()"},
+  {ph:"d", t:"LoRA 訓練", d:"Unsloth FastLanguageModel ＋ TRL SFTTrainer。Llama 3.1 8B、r=32、α=32、lr=3e-4、packing=True、3 epochs、adamw_8bit。", why:"單卡可訓、品質接近全量（見「記憶體計算機」）。A100 上約 50 分鐘。", code:"finetune.py：finetune() → SFTTrainer(...)"},
+  {ph:"d", t:"測一句＋存檔上傳", d:"FastLanguageModel.for_inference() 測一句提示；merged_16bit 合併權重，上傳 Hub。", why:"確認 EOS 停止、模板正確、損失曲線健康。", code:"finetune.py：inference() / save_model()"},
+];
+(function renderPipe(){
+  const wrap = document.getElementById("pipeWrap");
+  const colors = Object.fromEntries(PHASES.map(p=>[p.id,p.color]));
+  let html = "";
+  for (const ph of PHASES){
+    html += `<div class="phase"><span class="phLabel" style="background:${ph.color}">${ph.label}</span><div class="nodes">`;
+    for (const n of PIPE.filter(n=>n.ph===ph.id)){
+      html += `<button class="node ${ph.id}" data-t="${n.t}">${n.t}</button>`;
+    }
+    html += `</div></div>`;
+  }
+  wrap.innerHTML = html;
+  const detail = document.getElementById("pipeDetail");
+  wrap.addEventListener("click", e=>{
+    const btn = e.target.closest(".node");
+    if(!btn) return;
+    wrap.querySelectorAll(".node").forEach(x=>x.classList.remove("active"));
+    btn.classList.add("active");
+    const n = PIPE.find(x=>x.t===btn.dataset.t);
+    detail.innerHTML = `<h3 style="color:${colors[n.ph]}">${n.t}</h3>
+      <p style="margin:4px 0"><b>做什麼：</b>${n.d}</p>
+      <p style="margin:4px 0"><b>為什麼：</b>${n.why}</p>
+      <p style="margin:4px 0" class="k"><b>repo 對應：</b><code>${n.code}</code></p>`;
+  });
+})();
+
+/* ============ 3. 模板實驗室 ============ */
+const esc = s => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function applyWs(html){
+  return html.replace(/ /g,'<span class="ws-sp">·</span>').replace(/\n/g,'<span class="ws-nl">↵</span>\n');
+}
+function renderTpl(){
+  const ins=$("tIns").value, inp=$("tInp").value, out=$("tOut").value;
+  const tpl=$("tTpl").value, eos=$("tEos").checked, ws=$("tWs").checked;
+  let html="";
+  if(tpl==="alpaca"){
+    html = `<span class="dim">Below is an instruction that describes a task. Write a response that appropriately completes the request.</span>\n\n<span class="tok">### Instruction:</span>\n${esc(ins)}\n\n`;
+    if(inp.trim()) html += `<span class="tok">### Input:</span>\n${esc(inp)}\n\n`;
+    html += `<span class="tok">### Response:</span>\n${esc(out)}`;
+    if(eos) html += `<span class="eos">&lt;|end_of_text|&gt;</span>`;
+  } else {
+    html = `<span class="tok">&lt;|im_start|&gt;</span>system\n<span class="dim">You are a helpful assistant.</span><span class="tok">&lt;|im_end|&gt;</span>\n`;
+    html += `<span class="tok">&lt;|im_start|&gt;</span>user\n${esc(ins)}${inp.trim()?"\n"+esc(inp):""}<span class="tok">&lt;|im_end|&gt;</span>\n`;
+    html += `<span class="tok">&lt;|im_start|&gt;</span>assistant\n${esc(out)}`;
+    if(eos) html += `<span class="eos">&lt;|im_end|&gt;</span>`;
+  }
+  $("tplOut").innerHTML = ws ? applyWs(html) : html;
+  const plain = (tpl==="alpaca"
+    ? "Below is an instruction...\n\n### Instruction:\n"+ins+"\n\n"+(inp.trim()?"### Input:\n"+inp+"\n\n":"")+"### Response:\n"+out+(eos?"<|end_of_text|>":"")
+    : "<|im_start|>system\n...<|im_end|>\n<|im_start|>user\n"+ins+"<|im_end|>\n<|im_start|>assistant\n"+out+(eos?"<|im_end|>":""));
+  $("tCount").textContent = plain.length + " 字元";
+  $("tplWarn").innerHTML = eos ? "" :
+    `<div class="warnbox">⚠ 少了 EOS：推論時模型不知道何時停止，會無限生成。書中檢查清單第一條。</div>`;
+}
+["tIns","tInp","tOut","tTpl","tEos","tWs"].forEach(id=>$(id).addEventListener("input", renderTpl));
+$("pTranslate").addEventListener("click", ()=>{ $("tIns").value="把下列句子翻成英文。"; $("tInp").value="今天天氣很好。"; $("tOut").value="The weather is nice today."; renderTpl(); });
+$("pSum").addEventListener("click", ()=>{ $("tIns").value="用一句話摘要這篇文章。"; $("tInp").value="這篇文章介紹監督式微調：先產生指令資料集，再清洗、去重、去污染，最後用 LoRA 訓練。"; $("tOut").value="本文介紹 SFT 的完整流程：產資料、清洗、訓練。"; renderTpl(); });
+renderTpl();
+
+/* ============ 4. 記憶體計算機 ============ */
+const BYTES = { full:16, lora:2.1, qlora:0.56 };
+const MEM = [
+  {id:"full", label:"全量微調", color:"#dc2626", note:"訓全部參數，品質最高，要多卡伺服器"},
+  {id:"lora", label:"LoRA", color:"#2563eb", note:"只訓小型適配器（r=8–64），單卡、品質接近全量"},
+  {id:"qlora", label:"QLoRA", color:"#059669", note:"LoRA ＋ 4-bit 凍結權重，VRAM 不足時用"},
+];
+const GPUS = [[16,"T4 16G"],[24,"4090 24G"],[80,"A100 80G"]];
+let memSel = "lora";
+(function initMem(){
+  $("mSize").addEventListener("input", drawMem);
+  $("mLlama").addEventListener("click", ()=>{ $("mSize").value = 56; drawMem(); });
+  $("memBars").addEventListener("click", e=>{
+    const row = e.target.closest(".memrow"); if(!row) return;
+    memSel = row.dataset.m; drawMem();
+  });
+  drawMem();
+})();
+function sliderToB(v){ return 0.5 * Math.pow(140, v/100); }  // 0.5B → 70B
+function drawMem(){
+  const B = sliderToB(+$("mSize").value);
+  $("mSizeVal").textContent = B.toFixed(1) + "B";
+  const SCALE = 128;
+  let html = "";
+  for(const m of MEM){
+    const gb = B * BYTES[m.id];
+    const w = Math.min(100, gb/SCALE*100);
+    const sel = memSel===m.id ? " sel":"";
+    html += `<div class="bar-row memrow${sel}" data-m="${m.id}" style="cursor:pointer" title="${m.note}">
+      <span class="bar-label">${m.label}</span>
+      <div class="bar-track"><div class="bar" style="width:${w}%;background:${m.color};opacity:${sel?1:.45}"></div>
+        ${GPUS.map(g=>`<span class="gpu" style="left:${g[0]/SCALE*100}%"><i>${g[1]}</i></span>`).join("")}
+      </div>
+      <span class="bar-val">${gb>=100? gb.toFixed(0) : gb.toFixed(1)} GB</span>
+    </div>`;
+  }
+  $("memBars").innerHTML = html;
+  const cur = MEM.find(m=>m.id===memSel), gb = B*BYTES[cur.id];
+  const fits = gb<=16? "T4（16GB）就夠" : gb<=24? "RTX 4090（24GB）可跑" : gb<=80? "A100（80GB）可跑" : "單卡不夠，需多卡或 Offload";
+  $("memVerdict").innerHTML = `<b style="color:${cur.color}">${cur.label}</b> ＠ ${B.toFixed(1)}B ≈ <b>${gb>=100?gb.toFixed(0):gb.toFixed(1)} GB</b> → ${fits}。${cur.note}。`;
+}
+
+/* ============ 5. 訓練曲線模擬 ============ */
+const N = 100;  // 每輪步數（示意）
+const DS = [ // 資料量 → 過擬合起始輪、成長率、雜訊
+  {onset:1.5, g:0.9, noise:0.22, name:"100 筆"},
+  {onset:2.0, g:0.6, noise:0.16, name:"400 筆"},
+  {onset:3.0, g:0.3, noise:0.10, name:"3,335 筆"},
+  {onset:4.5, g:0.12, noise:0.06, name:"10,000 筆"},
+];
+const rnd = i => { const x = Math.sin(i*127.1)*43758.5453; return x - Math.floor(x); };
+function lrFromSlider(v){ const lr = 1e-5 * Math.pow(100, v/100); return lr; } // 1e-5 → 1e-3
+function lrText(lr){ return lr>=1e-4? lr.toExponential(0).replace("e-","e-") : lr.toExponential(0); }
+function simData(){
+  const lr = lrFromSlider(+$("sLr").value);
+  const epochs = +$("sEp").value;
+  const ds = DS[+$("sDs").value];
+  const k = 1.0 + 2.2*Math.log10(lr/1e-5);
+  const amp = Math.max(0,(lr-5e-4))*800;   // LR 過高 → 震盪
+  const L0=2.2, Lmin=0.35;
+  const train=[], val=[];
+  for(let i=0;i<=epochs*N;i++){
+    const base = Lmin + (L0-Lmin)*Math.exp(-k*i/N);
+    let t = base + (rnd(i)-0.5)*ds.noise;
+    t += amp*Math.sin(i/6) + amp*0.35*(i/N);
+    train.push(t);
+    const over = ds.g * Math.pow(Math.max(0,(i-ds.onset*N))/N, 2);
+    val.push(base + over + (rnd(i+999)-0.5)*ds.noise*0.4);
+  }
+  return {train, val, epochs, ds, lr, amp};
+}
+function fitCanvas(cv){
+  const r = cv.getBoundingClientRect(), d = window.devicePixelRatio||1;
+  cv.width = r.width*d; cv.height = r.height*d;
+  const ctx = cv.getContext("2d"); ctx.setTransform(d,0,0,d,0,0);
+  return [ctx, r.width, r.height];
+}
+function drawSim(){
+  const cv = $("simCanvas"); const [ctx,W,H] = fitCanvas(cv);
+  const {train,val,epochs,ds,lr,amp} = simData();
+  const L=$("sLrVal"), E=$("sEpVal");
+  L.textContent = lr.toExponential(0);
+  E.textContent = epochs;
+  const padL=46, padR=14, padT=14, padB=30;
+  const X = i => padL + (W-padL-padR) * i/(epochs*N);
+  const Y = v => padT + (H-padT-padB) * (1 - v/2.5);
+  ctx.clearRect(0,0,W,H);
+  // grid
+  ctx.strokeStyle="#eef2f7"; ctx.fillStyle="#94a3b8"; ctx.font="11px system-ui"; ctx.lineWidth=1;
+  for(let g=0;g<=2.5;g+=0.5){ ctx.beginPath(); ctx.moveTo(padL,Y(g)); ctx.lineTo(W-padR,Y(g)); ctx.stroke(); ctx.fillText(g.toFixed(1),6,Y(g)+4); }
+  ctx.textAlign="center";
+  for(let e=1;e<=epochs;e++){ ctx.fillText("epoch "+e, X(e*N), H-8); }
+  ctx.textAlign="left";
+  // curves
+  const line=(arr,color,dash)=>{ ctx.strokeStyle=color; ctx.lineWidth=2; ctx.setLineDash(dash); ctx.beginPath();
+    arr.forEach((v,i)=>{ i? ctx.lineTo(X(i),Y(v)) : ctx.moveTo(X(i),Y(v)); }); ctx.stroke(); ctx.setLineDash([]); };
+  line(train,"#4f46e5",[]);
+  line(val,"#e11d48",[6,4]);
+  // best-stop marker
+  let iMin=0; for(let i=0;i<val.length;i++) if(val[i]<val[iMin]) iMin=i;
+  if(val[val.length-1] > val[iMin]+0.03 && iMin < val.length-1){
+    ctx.strokeStyle="#94a3b8"; ctx.setLineDash([3,3]); ctx.beginPath();
+    ctx.moveTo(X(iMin),padT); ctx.lineTo(X(iMin),H-padB); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#b45309"; ctx.fillText("最佳停止點 ≈ epoch "+(iMin/N).toFixed(1), Math.min(X(iMin)+6,W-150), padT+12);
+  }
+  // status
+  const st=$("simStatus");
+  if(amp>=0.06){
+    st.className="status bad";
+    st.innerHTML="<b>⚠ 學習率過高（"+lrText(lr)+"）</b>：訓練損失震盪甚至上升。書中建議：LoRA 用 1e-4–3e-4。把滑桿拉回去看變化。";
+  } else if(val[val.length-1] > val[iMin]+0.03 && iMin < val.length-1){
+    st.className="status warn";
+    st.innerHTML=`<b>⚠ 過擬合：驗證損失自 epoch ${(iMin/N).toFixed(1)} 起持續上升</b>（資料 ${ds.name}、訓 ${epochs} 輪）。書中規則「驗證損失上升即停」：早停於最佳點，或加資料、減輪數。`;
+  } else {
+    st.className="status good";
+    st.innerHTML=`<b>✓ 訓練健康</b>（lr ${lrText(lr)}、${epochs} 輪、${ds.name}）：訓練損失下降、驗證損失未上升。最終 train ≈ ${train[train.length-1].toFixed(2)}、val ≈ ${val[val.length-1].toFixed(2)}。`;
+  }
+}
+$("sLr").addEventListener("input", drawSim);
+$("sEp").addEventListener("input", drawSim);
+$("sDs").addEventListener("change", drawSim);
+window.addEventListener("resize", drawSim);
+drawSim();
+
+/* ============ 6. 決策流程 ============ */
+const DEC = {
+  start: {q:"第一步：先試提示工程（少樣本、RAG）了嗎？", opts:[["還沒","try_first"],["試過了","measure"]]},
+  try_first:{end:"先做提示工程：加少樣本範例或接 RAG。這比微調便宜得多，很多問題在這步就解決。", type:"warn"},
+  measure:{q:"量測之後，準確率／成本／延遲達標了嗎？", opts:[["已達標","no_need"],["未達標","data"]]},
+  no_need:{end:"不需要微調。維持提示工程方案，省下訓練與維運成本。", type:"ok"},
+  data:{q:"手上已有 >1,000 筆高品質樣本？", opts:[["沒有","need_data"],["有","goal"]]},
+  need_data:{end:"先執行流程 A–C：產生指令資料集 → 清洗去重去污染 → 增量。品質重於數量，湊不齊就別硬訓。", type:"warn"},
+  goal:{q:"你想教模型的是什麼？", opts:[["新的行為（聽指令、格式、文風）","sft_ok"],["全新的知識","knowledge_warn"]]},
+  knowledge_warn:{end:"注意：SFT 教不了全新的知識，硬教會產生幻覺，還可能災難性遺忘。全新知識請用 RAG 或續訓；行為問題才用 SFT。", type:"warn"},
+  sft_ok:{end:"✅ 適合 SFT。下一步選方法：單卡＋要品質 → LoRA（書中範例：r=32）；VRAM 不夠 → QLoRA；有多卡伺服器 → 全量。往上拉「記憶體計算機」確認。", type:"ok"},
+};
+let decState = ["start"];
+function drawDec(){
+  const key = decState[decState.length-1];
+  const node = DEC[key];
+  const body = $("decBody");
+  $("decCrumbs").textContent = decState.length>1 ? "路徑：" + decState.slice(0,-1).map(k=>DEC[k].q||k).map(s=>s.length>18? s.slice(0,18)+"…" : s).join(" → ") : "";
+  if(node.q){
+    body.innerHTML = `<div class="decq">${node.q}</div><div class="decbtns">` +
+      node.opts.map(o=>`<button class="btn primary" data-go="${o[1]}">${o[0]}</button>`).join("") + `</div>`;
+  } else {
+    body.innerHTML = `<div class="decend ${node.type}">${node.end}</div>`;
+  }
+}
+$("decBody").addEventListener("click", e=>{
+  const b = e.target.closest("[data-go]"); if(!b) return;
+  decState.push(b.dataset.go); drawDec();
+});
+$("decReset").addEventListener("click", ()=>{ decState=["start"]; drawDec(); });
+drawDec();
+
+/* ============ 7. 測驗 ============ */
+const QUIZ = [
+  {q:"SFT 的主要目的是什麼？",
+   opts:["把基座模型變成會聽指令的助理","增加模型的上下文長度","把模型壓縮到更小","替換模型的詞表"], ans:0,
+   exp:"基座模型只會預測下一個詞。SFT 用「指令—答案」配對訓練，讓它聽指令並具備領域知識。"},
+  {q:"哪一個「不是」好樣本的特性？",
+   opts:["正確","多樣","困難","長"], ans:3,
+   exp:"好樣本：正確、多樣、困難。「長」不是目標；數量原則是品質重於數量。"},
+  {q:"為什麼指令資料集要求指令「自足」（禁用「上下文」「原文」等詞）？",
+   opts:["為了節省 token","推論時模型看不到產生資料用的原文，提及上下文會造成訓練與推論不一致","為了讓 JSON 輸出更小","因為法律限制"], ans:1,
+   exp:"樣本是從某篇文章產生的，但推理時只會有指令本身。指令提到「根據上下文」模型就無所適從。"},
+  {q:"7B 模型全量微調（Adam）大約需要多少 GPU 記憶體？",
+   opts:["約 14 GB","約 56 GB","約 112 GB（16 bytes/參數）","約 7 GB"], ans:2,
+   exp:"全量 ≈ 16 bytes/參數（權重 4＋梯度 4＋Adam 狀態 8）。7B × 16 ≈ 112 GB。單卡跑不動 → LoRA / QLoRA。"},
+  {q:"訓練中驗證損失持續上升，該怎麼辦？",
+   opts:["繼續訓完，分數會回來","調大學習率","停止訓練：這是過擬合，早停於最佳點","刪掉測試集"], ans:2,
+   exp:"驗證損失上升＝過擬合。書中規則：上升即停。加資料或減輪數也是解法；刪測試集是作弊。"},
+  {q:"「去污染」（decontamination）的目的是？",
+   opts:["刪除訓練集中與測試集相同／近似的樣本，避免評估作弊","清除個資","把英文資料轉成中文","降低磁碟用量"], ans:0,
+   exp:"若訓練集混入測試集樣本，模型是「背答案」，評估分數虛高。做法：把測試集加入去重輸入，訓練集只留不重複的。"},
+];
+(function initQuiz(){
+  const wrap = $("quizWrap");
+  wrap.innerHTML = QUIZ.map((q,i)=>`<div class="q" data-i="${i}">
+    <p class="qtext">${i+1}. ${q.q}</p>
+    ${q.opts.map((o,j)=>`<label><input type="radio" name="q${i}" value="${j}"> ${String.fromCharCode(65+j)}. ${o}</label>`).join("")}
+    <div class="fb" id="fb${i}"></div>
+  </div>`).join("");
+  $("quizSubmit").addEventListener("click", ()=>{
+    let score=0;
+    QUIZ.forEach((q,i)=>{
+      const fb = $("fb"+i);
+      const picked = document.querySelector(`input[name=q${i}]:checked`);
+      if(picked && +picked.value===q.ans){ score++; fb.className="fb right"; fb.innerHTML="✓ 正確："+q.exp; }
+      else {
+        fb.className="fb wrong";
+        fb.innerHTML = (picked? `✗ 你選了 ${String.fromCharCode(65+ +picked.value)}。` : "✗ 未作答。") +
+          `正解 ${String.fromCharCode(65+q.ans)}：${q.exp}`;
+      }
+    });
+    $("quizScore").innerHTML = score===QUIZ.length? `🎉 滿分 ${score}/${QUIZ.length}！` : `得分：${score} / ${QUIZ.length}`;
+  });
+  $("quizReset").addEventListener("click", ()=>{
+    wrap.querySelectorAll("input[type=radio]").forEach(r=>r.checked=false);
+    QUIZ.forEach((q,i)=>{ const fb=$("fb"+i); fb.className="fb"; fb.textContent=""; });
+    $("quizScore").textContent="";
+  });
+})();
+</script>
+</body>
+</html>
