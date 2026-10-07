@@ -45,7 +45,10 @@ code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:
 #pipeDetail{margin-top:16px;border:1px dashed var(--line);border-radius:10px;padding:14px 16px;font-size:14px}
 #pipeDetail h3{margin:0 0 6px;font-size:16px}
 #pipeDetail .k{color:var(--muted);font-size:13px}
-#pipeDetail code{display:inline-block;margin-top:4px}
+ #pipeDetail code{display:inline-block;margin-top:4px}
+ .repo-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+ a.repo-btn{display:inline-block;font-size:13px;padding:6px 12px;border-radius:8px;border:1.5px solid var(--accent);color:var(--accent);text-decoration:none;background:#fff}
+ a.repo-btn:hover{background:var(--accent-soft)}
 /* template lab */
 .lab{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 @media (max-width:760px){.lab{grid-template-columns:1fr}}
@@ -488,11 +491,11 @@ const PHASES = [
   {id:"d", label:"D · 微調", color:"#7c3aed"},
 ];
 const PIPE = [
-  {ph:"a", t:"蒐集原始文本", d:"用爬蟲抓你自己寫的文章（Medium、GitHub、LinkedIn、自訂來源）。", why:"這些文章之後是指令資料集的素材。", code:"repo/llm_engineering/application/crawlers/ · repo/steps/etl/crawl_links.py"},
-  {ph:"a", t:"清洗文章", d:"刪雜訊字元、修空白與編碼。", why:"髒資料會污染後續每一步。", code:"repo/llm_engineering/application/preprocessing/operations/cleaning.py"},
-  {ph:"a", t:"切塊 1000–2000 字", d:"把文章切成適合 LLM 處理的區塊。", why:"太大超出上下文、太小缺脈絡。", code:"repo/llm_engineering/application/preprocessing/operations/chunking.py"},
-  {ph:"a", t:"LLM 產生指令—答案", d:"每區塊請 LLM 產 5 組配對。指令要自足（禁用「上下文、原文」等詞）。答案模仿原作者文風。用 JSON 模式輸出。", why:"把「作者知識」轉成「指令行為」。成果：3,335 組 → mlabonne/llmtwin。", code:"repo/llm_engineering/application/dataset/generation.py · repo/steps/generate_datasets/create_prompts.py"},
-  {ph:"a", t:"90/10 切分＋上傳", d:"切訓練/測試集，上傳 Hugging Face Hub，開檢視器人工抽查。", why:"測試集之後用於偵測污染與評估。", code:"repo/steps/generate_datasets/push_to_huggingface.py"},
+  {ph:"a", t:"蒐集原始文本", d:"用爬蟲抓你自己寫的文章（Medium、GitHub、LinkedIn、自訂來源）。", why:"這些文章之後是指令資料集的素材。", code:"repo/llm_engineering/application/crawlers/ · repo/steps/etl/crawl_links.py", links:[["crawlers/ 目錄","repo/llm_engineering/application/crawlers/"],["crawl_links.py","repo/steps/etl/crawl_links.py"]]},
+  {ph:"a", t:"清洗文章", d:"刪雜訊字元、修空白與編碼。", why:"髒資料會污染後續每一步。", code:"repo/llm_engineering/application/preprocessing/operations/cleaning.py", links:[["cleaning.py","repo/llm_engineering/application/preprocessing/operations/cleaning.py"]]},
+  {ph:"a", t:"切塊 1000–2000 字", d:"把文章切成適合 LLM 處理的區塊。", why:"太大超出上下文、太小缺脈絡。", code:"repo/llm_engineering/application/preprocessing/operations/chunking.py", links:[["chunking.py","repo/llm_engineering/application/preprocessing/operations/chunking.py"]]},
+  {ph:"a", t:"LLM 產生指令—答案", d:"每區塊請 LLM 產 5 組配對。指令要自足（禁用「上下文、原文」等詞）。答案模仿原作者文風。用 JSON 模式輸出。", why:"把「作者知識」轉成「指令行為」。成果：3,335 組 → mlabonne/llmtwin。", code:"repo/llm_engineering/application/dataset/generation.py · repo/steps/generate_datasets/create_prompts.py", links:[["generation.py","repo/llm_engineering/application/dataset/generation.py"],["create_prompts.py","repo/steps/generate_datasets/create_prompts.py"]]},
+  {ph:"a", t:"90/10 切分＋上傳", d:"切訓練/測試集，上傳 Hugging Face Hub，開檢視器人工抽查。", why:"測試集之後用於偵測污染與評估。", code:"repo/steps/generate_datasets/push_to_huggingface.py", links:[["push_to_huggingface.py","repo/steps/generate_datasets/push_to_huggingface.py"]]},
   {ph:"b", t:"規則過濾", d:"刪過短／過長答案、含禁用詞樣本；檢查程式碼與 JSON 語法。", why:"最便宜的品質防線：先跑規則，再花錢跑模型。", code:"書中流程 B（自行實作）"},
   {ph:"b", t:"去重", d:"三層：MD5/SHA-256 刪完全重複 → MinHash＋Jaccard 刪近似 → 向量＋餘弦刪同義。", why:"重複樣本放大偏誤、拉高過擬合風險。", code:"書中流程 B"},
   {ph:"b", t:"去污染", d:"把測試集加入去重輸入；訓練集中與測試集相同的樣本全刪，只留測試副本。", why:"防止模型「背答案」，否則評估分數虛高。", code:"書中流程 B"},
@@ -500,11 +503,27 @@ const PIPE = [
   {ph:"c", t:"生成更多配對", d:"從 5–10 個種子提示，請 LLM 產新配對。", why:"單任務小模型需要更多樣本。", code:"書中流程 C"},
   {ph:"c", t:"Evol-Instruct 演化", d:"縱向＝加難（加限制、加推理步驟）；橫向＝同領域產稀有指令。", why:"補上「困難」與「多樣」兩個特性。", code:"書中流程 C"},
   {ph:"c", t:"UltraFeedback 回饋", d:"產多個答案 → 評分 → 只留最佳。", why:"合成資料會複製模型偏誤；生成後務必重跑流程 B。", code:"書中流程 C"},
-  {ph:"d", t:"混入通用資料", d:"合併 llmtwin ＋ mlabonne/FineTome-Alpaca-100k 前 10,000 筆。", why:"通用資料教「聽指令」，領域資料教知識。", code:"finetune.py：dataset1 + dataset2"},
-  {ph:"d", t:"套 Alpaca 模板＋EOS", d:"每筆格式化成模板字串，結尾加 EOS。切分 95% 訓練 / 5% 測試。", why:"模板一格空格錯誤即失敗（見下方「模板實驗室」）。", code:"finetune.py：format_samples_sft()"},
-  {ph:"d", t:"LoRA 訓練", d:"Unsloth FastLanguageModel ＋ TRL SFTTrainer。Llama 3.1 8B、r=32、α=32、lr=3e-4、packing=True、3 epochs、adamw_8bit。", why:"單卡可訓、品質接近全量（見「記憶體計算機」）。A100 上約 50 分鐘。", code:"finetune.py：finetune() → SFTTrainer(...)"},
-  {ph:"d", t:"測一句＋存檔上傳", d:"FastLanguageModel.for_inference() 測一句提示；merged_16bit 合併權重，上傳 Hub。", why:"確認 EOS 停止、模板正確、損失曲線健康。", code:"finetune.py：inference() / save_model()"},
+  {ph:"d", t:"混入通用資料", d:"合併 llmtwin ＋ mlabonne/FineTome-Alpaca-100k 前 10,000 筆。", why:"通用資料教「聽指令」，領域資料教知識。", code:"finetune.py：dataset1 + dataset2", links:[["finetune.py:101 載入資料集","repo/llm_engineering/model/finetuning/finetune.py",101]]},
+  {ph:"d", t:"套 Alpaca 模板＋EOS", d:"每筆格式化成模板字串，結尾加 EOS。切分 95% 訓練 / 5% 測試。", why:"模板一格空格錯誤即失敗（見下方「模板實驗室」）。", code:"finetune.py：format_samples_sft()", links:[["finetune.py:93 format_samples_sft","repo/llm_engineering/model/finetuning/finetune.py",93]]},
+  {ph:"d", t:"LoRA 訓練", d:"Unsloth FastLanguageModel ＋ TRL SFTTrainer。Llama 3.1 8B、r=32、α=32、lr=3e-4、packing=True、3 epochs、adamw_8bit。", why:"單卡可訓、品質接近全量（見「記憶體計算機」）。A100 上約 50 分鐘。", code:"finetune.py：finetune() → SFTTrainer(...)", links:[["finetune.py:61 finetune()","repo/llm_engineering/model/finetuning/finetune.py",61],["finetune.py:117 SFTTrainer","repo/llm_engineering/model/finetuning/finetune.py",117]]},
+  {ph:"d", t:"測一句＋存檔上傳", d:"FastLanguageModel.for_inference() 測一句提示；merged_16bit 合併權重，上傳 Hub。", why:"確認 EOS 停止、模板正確、損失曲線健康。", code:"finetune.py：inference() / save_model()", links:[["finetune.py:210 for_inference","repo/llm_engineering/model/finetuning/finetune.py",210],["finetune.py:218 save_model","repo/llm_engineering/model/finetuning/finetune.py",218]]},
 ];
+/* repo 路徑 → 本機 Emacs：file:// 下以頁面位置推算專案根目錄，組成 emacs:// 連結 */
+function repoAbsPath(rel){
+  try{
+    if(location.protocol==="file:"){
+      const pagePath = decodeURIComponent(location.pathname);
+      const root = pagePath.replace(/\/ch5\/[^/]*$/, "");
+      if(root && root !== pagePath) return root + "/" + rel;
+    }
+  }catch(e){}
+  return rel;
+}
+function emacsHref(rel, line){
+  let u = "emacs://open?path=" + encodeURIComponent(repoAbsPath(rel));
+  if(line) u += "&line=" + line;
+  return u;
+}
 (function renderPipe(){
   const wrap = document.getElementById("pipeWrap");
   const colors = Object.fromEntries(PHASES.map(p=>[p.id,p.color]));
@@ -524,10 +543,14 @@ const PIPE = [
     wrap.querySelectorAll(".node").forEach(x=>x.classList.remove("active"));
     btn.classList.add("active");
     const n = PIPE.find(x=>x.t===btn.dataset.t);
+    const btns = (n.links||[]).map(([label, rel, line]) =>
+      `<a class="repo-btn" href="${emacsHref(rel, line)}">📂 ${label}</a>`).join("");
     detail.innerHTML = `<h3 style="color:${colors[n.ph]}">${n.t}</h3>
       <p style="margin:4px 0"><b>做什麼：</b>${n.d}</p>
       <p style="margin:4px 0"><b>為什麼：</b>${n.why}</p>
-      <p style="margin:4px 0" class="k"><b>repo 對應：</b><code>${n.code}</code></p>`;
+      <p style="margin:4px 0" class="k"><b>repo 對應：</b><code>${n.code}</code></p>` +
+      (btns ? `<div class="repo-btns">${btns}</div>
+      <p class="note">按鈕經 <code>emacs://</code> 開本機 Emacs（需先註冊 handler；沒註冊時點擊無反應）。</p>` : "");
   });
 })();
 
