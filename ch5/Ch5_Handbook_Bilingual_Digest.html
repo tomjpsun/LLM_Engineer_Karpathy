@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ch5 監督式微調 · 英中摘要對照（LLM Engineer's Handbook）</title>
+<style>
+:root{
+  --ink:#1e293b; --muted:#64748b; --bg:#f6f7fb; --card:#ffffff; --line:#e2e8f0;
+  --accent:#4f46e5; --accent-soft:#eef2ff;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);line-height:1.7}
+header.top{background:linear-gradient(135deg,#312e81,#4f46e5);color:#fff;padding:26px 20px 18px}
+header.top h1{margin:0 0 4px;font-size:24px}
+header.top p{margin:0;color:#c7d2fe;font-size:13.5px}
+nav.tabs{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);display:flex;gap:2px;overflow-x:auto;padding:0 12px}
+nav.tabs a{padding:10px 12px;font-size:13.5px;color:var(--muted);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+nav.tabs a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:20px;scroll-margin-top:60px}
+section h2{margin:0 0 4px;font-size:19px}
+section h2 .n{display:inline-block;width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;text-align:center;line-height:28px;font-size:14px;margin-right:8px;vertical-align:2px}
+section h3{margin:18px 0 6px;font-size:15.5px;color:var(--accent)}
+.notice{margin-top:14px;border-left:4px solid #b45309;background:#fffbeb;padding:10px 14px;font-size:13.5px;border-radius:0 8px 8px 0}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+@media (max-width:820px){.pair{grid-template-columns:1fr}}
+.pair .en,.pair .zh{border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px;background:#fbfcfe}
+.pair .en{border-top:3px solid #3b82f6}
+.pair .zh{border-top:3px solid #10b981}
+.pair .tag{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}
+ul{margin:6px 0 0 18px;padding:0}
+li{margin:3px 0}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:10px}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#eef2f7;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+footer{max-width:1100px;margin:28px auto 40px;padding:0 16px;font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>第 5 章 · Supervised Fine-Tuning — 英中摘要對照</h1>
+  <p>LLM Engineer's Handbook（Paul Iusztin &amp; Maxime Labonne）· 各節英文摘要＋繁體中文對照</p>
+</header>
+
+<nav class="tabs">
+  <a href="#s1">章節導覽</a>
+  <a href="#s2">建立指令資料集</a>
+  <a href="#s2-6">自建資料集（實作）</a>
+  <a href="#s3">SFT 技術</a>
+  <a href="#s3-6">微調實作</a>
+  <a href="#s4">總結</a>
+</nav>
+
+<main>
+
+<div class="notice">⚠ 本頁是<b>逐節摘要對照</b>，不是原文逐段翻譯：英文欄為各節重點的英文摘要（原書文字濃縮改寫），中文欄為其繁體對照。原文與完整程式碼請看 <code>ch5/287_PDFsam_….pdf</code>；互動學習頁見 <code>ch5/Ch5_SFT_Interactive.html</code>。</div>
+
+<!-- ===================== 1 章節導覽 ===================== -->
+<section id="s1">
+  <h2><span class="n">1</span>Chapter Overview 章節導覽</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      After pre-training, Supervised Fine-Tuning (SFT) refines an LLM with curated instruction–answer pairs. It serves two purposes: teaching the model a specific chat format so it behaves as a conversational agent, and adapting its broad knowledge to targeted tasks or domains. SFT bridges the gap between general language understanding and practical utility — improving instruction-following, relevance, and coherence for goals like summarization, translation, or domain expertise. The chapter covers three topics: creating a high-quality instruction dataset, SFT techniques, and implementing fine-tuning in practice.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      預訓練之後，監督式微調（SFT）用精心策展的「指令—答案」配對來精修 LLM。目的有二：教模型學會特定聊天格式、成為對話代理；並把廣泛知識調校到特定任務或領域。SFT 彌補了「通用語言理解」與「實用性」之間的落差——提升聽指令能力、回覆相關性與連貫性（如摘要、翻譯或領域專業）。本章涵蓋三個主題：建立高品質指令資料集、SFT 技術、實際動手微調。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2 建立指令資料集 ===================== -->
+<section id="s2">
+  <h2><span class="n">2</span>Creating an Instruction Dataset 建立指令資料集</h2>
+
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Building the instruction dataset is usually the hardest part of fine-tuning. Raw text rarely contains natural instruction–answer pairs, so it must be transformed into a format with both parts. Quality matters as much as quantity: substantial time goes into manually checking and verifying individual samples to keep the dataset accurate and useful for training.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      建立指令資料集通常是微調流程中最難的部分。原始文本很少有現成的「指令—答案」自然配對，必須轉換成同時含兩者的格式。品質與數量同樣重要：需要投入大量時間人工抽查、逐一驗證樣本，確保資料集正確且對訓練有用。
+    </div>
+  </div>
+
+  <h3>2.1 Data quantity 資料數量</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      More high-quality samples generally help, but noisy or hallucinated data quickly degrades the model — quality beats raw size. A practical recipe is to start with a small curated set (around 1,000 samples), evaluate, then scale up. In the book's example, an LLM (GPT-4o mini) generates on the order of a few thousand pairs (≈3.3k for the llmtwin dataset) from the crawled articles.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      高品質樣本越多通常越好，但雜訊或幻覺資料會很快污染模型——品質比數量重要。務實做法：先建立約 1,000 筆的小型精選集，評估後再擴大。書中範例以 LLM（GPT-4o mini）從爬取文章產出數千組配對（llmtwin 資料集約 3.3k 筆）。
+    </div>
+  </div>
+
+  <h3>2.2 Data curation 資料策展</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Curation runs the generated pairs through four quality gates:
+      <ul>
+        <li><b>Rule-based filtering</b> — cheap checks first: remove samples whose answers are too short/long, contain banned words, or whose code/JSON fails syntax checks; drop "instructions" that look like prompts.</li>
+        <li><b>Deduplication</b> — three layers: exact duplicates via hashing (MD5/SHA-256), near-duplicates via MinHash + Jaccard similarity, semantic duplicates via embeddings + cosine similarity.</li>
+        <li><b>Decontamination</b> — add the test set to the deduplication inputs; any training sample matching a test sample is removed so the test set stays exclusive.</li>
+        <li><b>Quality evaluation</b> — an LLM judge scores samples (e.g. 1–4) with structured feedback; using several judges and randomizing answer order reduces bias.</li>
+      </ul>
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      策展把產出的配對過四道品質關卡：
+      <ul>
+        <li><b>規則過濾</b>——先跑最便宜的檢查：刪掉答案過短／過長、含禁用詞、程式碼或 JSON 語法錯誤的樣本；「指令」長得像提示詞的也刪。</li>
+        <li><b>去重</b>——三層：雜湊（MD5/SHA-256）刪完全重複；MinHash＋Jaccard 刪近似重複；向量嵌入＋餘弦刪語義重複。</li>
+        <li><b>去污染</b>——把測試集加進去重的比對輸入；訓練集中與測試樣本相符的一律刪除，保持測試集獨佔性。</li>
+        <li><b>品質評估</b>——用 LLM 評審給分（如 1–4 分）並附結構化評語；多評審＋隨機調換答案順序可降低偏誤。</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>2.3 Data exploration 資料探索</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Before generating anything at scale, inspect the raw material: sample records, check topic coverage, text length, and anomalies. Understanding the source data guides the generation strategy and makes downstream quality problems easier to trace.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      大規模生成之前，先檢視原始素材：抽樣閱讀、確認主題涵蓋面、文本長度與異常樣本。理解來源資料能引導生成策略，也讓後續品質問題更容易追蹤。
+    </div>
+  </div>
+
+  <h3>2.4 Data generation 資料生成</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Starting from seed instructions drawn from real content, an LLM generates new instruction–answer pairs. Good prompts require instructions to be self-contained (no references to "the context" or "the original text"), answers to imitate the original author's style, and structured JSON output for reliable parsing.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      從真實內容取出的種子指令出發，請 LLM 生成新的指令—答案配對。提示詞的關鍵要求：指令必須自足（不得出現「上下文」「原文」等指涉）、答案模仿原作者文風、以結構化 JSON 輸出方便解析。
+    </div>
+  </div>
+
+  <h3>2.5 Data augmentation 資料增強</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      To add difficulty and diversity, Evol-Instruct-style prompting rewrites instructions along two axes: <b>evolution in-depth</b> (add constraints, add reasoning steps, make the task harder) and <b>evolution in-breadth</b> (generate rare, varied instructions in the same domain). The augmented data must go back through the curation pipeline — synthetic data tends to copy the model's biases.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      為增加難度與多樣性，可用 Evol-Instruct 式提示改寫指令，兩個方向：<b>縱向演化</b>（加限制、加推理步驟、加難）與<b>橫向演化</b>（在同領域生成稀有、多樣的新指令）。增強後的資料必須重新跑策展流程——合成資料容易複製模型的偏誤。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2.6 自建資料集實作 ===================== -->
+<section id="s2-6">
+  <h2><span class="n">3</span>Creating Our Own Instruction Dataset 自建資料集（實作）</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      The hands-on walkthrough builds the real pipeline behind the llmtwin dataset:
+      <ul>
+        <li>Crawl your own articles (Medium, GitHub, LinkedIn, custom sources) with crawler classes storing raw content in a data warehouse.</li>
+        <li>ETL step: clean the articles (special characters, whitespace, encoding) and chunk them into pieces of roughly 1,000–2,000 characters.</li>
+        <li>Generate instruction–answer pairs per chunk with GPT-4o mini: system + user prompts, JSON-mode output, self-contained instructions, author-style answers.</li>
+        <li>Orchestrate it as one main function and run it over the whole dataset, yielding ≈3,335 pairs.</li>
+        <li>Push the dataset to the Hugging Face Hub and review samples manually in the dataset viewer.</li>
+      </ul>
+      Code lives in the book's repo (<code>llm_engineering/</code> + <code>steps/generate_datasets/</code>); your local copy is under <code>repo/</code>.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      實作篇打造 llmtwin 資料集背後的真實管線：
+      <ul>
+        <li>用爬蟲類別抓自己的文章（Medium、GitHub、LinkedIn、自訂來源），原始內容存入資料倉儲。</li>
+        <li>ETL 步驟：清洗文章（特殊字元、空白、編碼），切成約 1,000–2,000 字元的區塊。</li>
+        <li>每個區塊用 GPT-4o mini 產生指令—答案配對：system＋user 提示、JSON 模式輸出、指令自足、答案模仿作者文風。</li>
+        <li>用一個 main 函式串起整條管線，對全部資料執行，得到約 3,335 組配對。</li>
+        <li>上傳 Hugging Face Hub，在資料集檢視器人工抽查。</li>
+      </ul>
+      程式碼在原書 repo（<code>llm_engineering/</code> ＋ <code>steps/generate_datasets/</code>）；本機副本在 <code>repo/</code>。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3 SFT 技術 ===================== -->
+<section id="s3">
+  <h2><span class="n">4</span>Exploring SFT and Its Techniques 探索 SFT 與其技術</h2>
+
+  <h3>4.1 When to fine-tune 該不該微調</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Start with prompt engineering, not fine-tuning: few-shot prompting and RAG solve many problems on open-weight or closed models, while also building an evaluation pipeline measuring accuracy, cost, and latency. Move to SFT only when results miss requirements and enough data exists. Fine-tuning brings control ("know your data") and customizability (a unique model) and enables diverse interactions beyond a plain chatbot. But it has limits: SFT refocuses knowledge already in the base weights — distant knowledge (e.g. an unknown language) is hard to learn, fine-tuning on new knowledge can increase hallucinations, and SFT risks catastrophic forgetting of base-model abilities.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      先從提示工程開始，別急著微調：few-shot 與 RAG 能在開放或閉源模型上解決許多問題，同時建立衡量準確率、成本、延遲的評估管線。等結果不符需求、且資料量足夠時，才進入 SFT。微調帶來控制權（「了解自己的資料」）與客製化（模型獨一無二），也能做出聊天機器人以外的多樣應用。但它有限制：SFT 是重新調校基座權重裡已有的知識——距離太遠的知識（如陌生語言）難以學會；用微調灌新知識可能加重幻覺；SFT 也有把基座能力「災難性遺忘」的風險。
+    </div>
+  </div>
+
+  <h3>4.2 Instruction dataset formats 指令資料集格式</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Each sample is typically a JSON dictionary. Common storage formats: <b>Alpaca</b> (<code>instruction</code> + optional <code>input</code> + <code>output</code> — single-turn), <b>ShareGPT</b> and <b>OpenAI</b> (a <code>conversations</code> list of messages — multi-turn, arbitrarily long dialogs), <b>OASST</b>, and <b>raw text</b> (which is effectively continual pre-training). The choice between single-turn and multi-turn shapes storage and depends on the end use case; the book's llmtwin dataset uses the Alpaca format.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      每筆樣本通常是一個 JSON 字典。常見格式：<b>Alpaca</b>（<code>instruction</code> ＋選填 <code>input</code> ＋ <code>output</code>——單輪）、<b>ShareGPT</b> 與 <b>OpenAI</b>（<code>conversations</code> 訊息清單——多輪、對話長度不限）、<b>OASST</b>，以及<b>原始文本</b>（等於持續預訓練）。單輪／多輪的選擇影響儲存方式，取決於最終用途；書中的 llmtwin 資料集採 Alpaca 格式。
+    </div>
+  </div>
+
+  <h3>4.3 Chat templates 聊天模板</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      After parsing the storage format, pairs are wrapped in a chat template — a unified structure with special tokens marking message boundaries and roles (e.g. ChatML's <code>&lt;|im_start|&gt;</code> / <code>&lt;|im_end|&gt;</code>). Base models have no template, so any template works when fine-tuning one; fine-tuning an instruct model (not recommended) requires reusing its own template or performance degrades. At inference you can't provide the answer: you feed the system + user parts and append the assistant header, and the fine-tuned model completes the reply — this is how instruction-following emerges.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      解析完儲存格式後，配對要包進聊天模板——用特殊 token 標出訊息邊界與角色的統一結構（如 ChatML 的 <code>&lt;|im_start|&gt;</code>／<code>&lt;|im_end|&gt;</code>）。基座模型沒有模板，微調時可任選；微調 instruct 模型（不建議）則必須沿用其原始模板，否則效能會掉。推論時無法提供標準答案：餵入 system＋user 部分、補上 assistant 起始標記，微調過的模型就會接續回答——聽指令的能力就是這樣來的。
+    </div>
+  </div>
+
+  <h3>4.4 Parameter-efficient fine-tuning 參數高效微調（PEFT）</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      <b>Full fine-tuning</b> updates every weight. On a single GPU the memory footprint is roughly (4 bytes of weights + optimizer states + gradients + activations) × parameters — over 1 TB for a 70B model. Mitigations exist (model parallelism, gradient accumulation, 8-bit Adam, activation checkpointing) but needs stay large.
+      <br><br>
+      <b>LoRA</b> freezes the original weight matrix W and trains two small low-rank matrices A, B whose product is added to it (W' = W + B·A). The rank r is the key hyperparameter. Benefits: dramatically lower memory, faster training, task-switching by swapping adapter weights.
+      <br><br>
+      <b>QLoRA</b> quantizes the frozen base weights to 4-bit (NF4) and trains LoRA adapters on top, bringing large-model fine-tuning onto a single consumer GPU with quality close to full fine-tuning.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      <b>全量微調</b>更新所有權重。單卡情境的記憶體約＝（權重 4 bytes＋優化器狀態＋梯度＋激活值）× 參數量——70B 模型超過 1 TB。有緩解手段（模型並行、梯度累積、8-bit Adam、激活值檢查點），但需求依然龐大。<br><br>
+      <b>LoRA</b> 凍結原始權重矩陣 W，只訓練兩個小型低秩矩陣 A、B，其乘積加回原矩陣（W' = W + B·A）。秩 r 是關鍵超參數。好處：記憶體大幅下降、訓練更快、換任務只需換 adapter 權重。<br><br>
+      <b>QLoRA</b> 把凍結的基座權重量化成 4-bit（NF4），其上只訓練 LoRA adapter，讓大模型微調跑得進單張消費級 GPU，品質接近全量微調。
+    </div>
+  </div>
+
+  <h3>4.5 Training parameters 訓練參數</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Key hyperparameters and their typical ranges:
+      <ul>
+        <li><b>Learning rate &amp; scheduler</b> — SFT with LoRA often uses ~2e-4 with a cosine/warmup schedule; too high destabilizes, too low stalls.</li>
+        <li><b>Batch size</b> — balance speed vs memory; gradient accumulation simulates larger batches.</li>
+        <li><b>Max sequence length &amp; packing</b> — set from your sample lengths; packing concatenates short samples to avoid padding waste.</li>
+        <li><b>Epochs</b> — typically 1–10 (2–5 common); too few underfits, too many overfits — monitor validation and stop early.</li>
+        <li><b>Optimizers</b> — AdamW is standard; 8-bit/paged variants cut optimizer memory; prefer full adamw_torch when quality is the priority.</li>
+        <li><b>Weight decay</b> — ~0.01–0.1 (0.01 a common start); too high impedes learning.</li>
+        <li><b>Gradient checkpointing</b> — trades recomputation for memory on long sequences.</li>
+      </ul>
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      關鍵超參數與常見範圍：
+      <ul>
+        <li><b>學習率與排程</b>——LoRA 的 SFT 常用約 2e-4，配 cosine／warmup 排程；太大不穩、太小卡住。</li>
+        <li><b>批次大小</b>——在速度與記憶體間取捨；梯度累積可模擬更大批次。</li>
+        <li><b>最大序列長度與 packing</b>——依樣本長度設定；packing 把短樣本串接，減少 padding 浪費。</li>
+        <li><b>訓練輪數</b>——常見 1–10 輪（2–5 居多）；太少欠擬合、太多過擬合——盯驗證集、早停。</li>
+        <li><b>優化器</b>——AdamW 是標準；8-bit／paged 版省優化器記憶體；品質優先時用完整版 adamw_torch。</li>
+        <li><b>權重衰減</b>——約 0.01–0.1（0.01 是常見起點）；太大會妨礙學習。</li>
+        <li><b>梯度檢查點</b>——用重算換記憶體，適合長序列。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 5 微調實作 ===================== -->
+<section id="s3-6">
+  <h2><span class="n">5</span>Fine-Tuning in Practice 微調實作</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      The practical run fine-tunes Llama 3.1 8B with Unsloth + TRL:
+      <ul>
+        <li>Load the model via <code>FastLanguageModel</code> (4-bit quantization, <code>max_seq_length = 2048</code>).</li>
+        <li>LoRA config: rank r = 32 (large enough for solid quality), α = 32, targeting attention + MLP projections.</li>
+        <li>Data: merge llmtwin with the first 10,000 samples of <code>mlabonne/FineTome-Alpaca-100k</code>; format with the Alpaca template and append the EOS token to every sample; split 95% train / 5% test.</li>
+        <li>Train with <code>SFTTrainer</code> (packing on, ~50 minutes on an A100).</li>
+        <li>Test inference with <code>FastLanguageModel.for_inference()</code> and a quick prompt — sanity check, not a real evaluation.</li>
+        <li>Save merged 16-bit weights locally and/or push to the Hugging Face Hub.</li>
+      </ul>
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      實作以 Unsloth ＋ TRL 微調 Llama 3.1 8B：
+      <ul>
+        <li>用 <code>FastLanguageModel</code> 載入模型（4-bit 量化、<code>max_seq_length = 2048</code>）。</li>
+        <li>LoRA 設定：秩 r = 32（足以達到好品質）、α = 32，套用到注意力與 MLP 投影層。</li>
+        <li>資料：llmtwin 合併 <code>mlabonne/FineTome-Alpaca-100k</code> 前 10,000 筆；用 Alpaca 模板格式化、每筆結尾加 EOS token；切 95% 訓練／5% 測試。</li>
+        <li>用 <code>SFTTrainer</code> 訓練（packing 開啟，A100 上約 50 分鐘）。</li>
+        <li>用 <code>FastLanguageModel.for_inference()</code> 測一句提示——快速健檢，不是正式評估。</li>
+        <li>合併後以 16-bit 存檔，並／或上傳 Hugging Face Hub。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 6 總結 ===================== -->
+<section id="s4">
+  <h2><span class="n">6</span>Summary 總結</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      The chapter covered LLM fine-tuning in theory and practice: the instruction-data pipeline from curation to augmentation, where each stage (quality assessment, generation, enhancement) can be tuned and adapted to your use case. It applied the framework to real data from Chapter 3, converting raw text into instruction–answer pairs with an LLM. It then examined SFT itself: advantages and limits, dataset storage formats with chat templates, and the three main techniques — full fine-tuning, LoRA, QLoRA — compared by memory, efficiency, and output quality. It closed by fine-tuning Llama 3.1 8B on the custom dataset. Next chapter: preference alignment (DPO) to create a new TwinLlama-3.1-8B with chosen/rejected answer pairs.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      本章理論與實作並重：從策展到增強的指令資料管線，每個階段（品質評估、生成、增強）都可調整、按用例取捨。接著把框架套在第 3 章的真實資料上，用 LLM 把原始文本轉成指令—答案配對。然後檢視 SFT 本身：優勢與限制、資料儲存格式與聊天模板、三大技術——全量微調、LoRA、QLoRA——依記憶體、效率、輸出品質比較。最後以自建資料集微調 Llama 3.1 8B 作結。下一章：偏好對齊（DPO），用「選中／被拒」答案對打造新版 TwinLlama-3.1-8B。
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  來源：<code>ch5/287_PDFsam_LLM Engineer's Handbook - Paul Iusztin , Maxime Labonne.pdf</code>（第 5 章，49 頁）· 本頁為摘要對照，非原文翻譯 · 離線單檔 HTML，直接用瀏覽器開啟。
+</footer>
+
+</body>
+</html>
