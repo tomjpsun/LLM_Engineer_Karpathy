@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ch6 偏好對齊 · 全文英中對照翻譯（LLM Engineer's Handbook）</title>
+<style>
+:root{--ink:#1e293b;--muted:#64748b;--bg:#f6f7fb;--card:#fff;--line:#e2e8f0;
+--accent:#4f46e5;--accent-soft:#eef2ff;--code:#0f172a}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;
+background:var(--bg);color:var(--ink);line-height:1.75}
+header.top{background:linear-gradient(135deg,#312e81,#4f46e5);color:#fff;padding:26px 20px 18px}
+header.top h1{margin:0 0 4px;font-size:24px}
+header.top p{margin:0;color:#c7d2fe;font-size:13.5px}
+nav.toc{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);
+display:flex;gap:2px;overflow-x:auto;padding:0 12px}
+nav.toc a{padding:10px 12px;font-size:13.5px;color:var(--muted);text-decoration:none;
+white-space:nowrap;border-bottom:2px solid transparent}
+nav.toc a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+nav.toc a.l3{padding-left:24px;font-size:12.5px}
+main{max-width:960px;margin:0 auto;padding:18px 16px 60px}
+section{background:var(--card);border:1px solid var(--line);border-radius:10px;
+padding:6px 22px 14px;margin:14px 0}
+h1,h2,h3{line-height:1.3}
+h2{font-size:20px;margin:18px 0 6px;padding-top:10px;border-top:1px dashed var(--line);
+scroll-margin-top:56px}
+h2:first-child{border-top:none}
+h3{font-size:16.5px;margin:16px 0 4px;color:#3730a3;scroll-margin-top:56px}
+.en-title{color:var(--muted);font-size:.72em;font-weight:400}
+.pair{margin:10px 0}
+.pair .zh{font-size:15px}
+.pair.en-only .zh{color:var(--muted)}
+details.en{margin-top:4px;border-left:3px solid var(--accent-soft);padding-left:10px}
+details.en summary{cursor:pointer;color:var(--muted);font-size:12px;user-select:none}
+details.en summary:hover{color:var(--accent)}
+details.en .en-text{color:var(--muted);font-size:13.5px;line-height:1.65;margin-top:4px}
+pre.code{background:var(--code);color:#e2e8f0;border-radius:8px;padding:12px 14px;
+overflow-x:auto;font-size:12.5px;line-height:1.55;font-family:ui-monospace,Menlo,Consolas,monospace}
+.flag{background:#fef3c7;border-radius:4px;padding:0 4px;font-size:12px;color:#92400e}
+.flag-keep{color:var(--muted);font-size:12px;border:1px solid var(--line);border-radius:4px;padding:0 4px}
+footer{max-width:960px;margin:0 auto;padding:10px 16px 40px;color:var(--muted);font-size:12.5px}
+footer code{word-break:break-all}
+</style>
+</head>
+<body>
+<header class="top">
+<h1>第 6 章　微調（Fine-Tuning）與偏好對齊 — 全文英中對照</h1>
+<p>LLM Engineer's Handbook（Paul Iusztin、Maxime Labonne）· 繁體中文翻譯 · 45 頁</p>
+</header>
+<nav class="toc"><a class="l2" href="#s2">認識偏好資料集</a><a class="l2" href="#s3">資料生成與評估</a><a class="l3" href="#s4">資料生成要訣</a><a class="l3" href="#s5">偏好評估</a><a class="l2" href="#s6">建立我們自己的偏好資料集</a><a class="l2" href="#s7">偏好對齊技術</a><a class="l3" href="#s8">人工回饋強化學習（RLHF）</a><a class="l3" href="#s9">直接偏好最佳化（DPO）</a><a class="l2" href="#s10">DPO 實作</a><a class="l2" href="#s11">總結</a><a class="l2" href="#s12">參考文獻</a><a class="l2" href="#s13">加入本書 Discord 社群</a></nav>
+<main>
+<section>
+<h2 id="s1">微調（Fine-Tuning）與偏好對齊<span class="en-title"> · Fine-Tuning with Preference Alignment</span></h2>
+<div class="pair"><div class="zh">監督式微調（SFT）已經對大型語言模型（LLMs）的適應有著重要的影響。然而，SFT卻無法捕捉人類偏好的細微差異和可能遇到的長尾交互模式。這種限制導致了更進階的技術出現，以便將人類偏好與 AI 系統對齊，總稱為偏好對齊。<br><br>偏好對齊解決 SFT 的缺陷，通過將直接的人類或 AI 回饋納入訓練過程中。這種方法允許更細微的理解人類偏好，特別是在複雜情況下，簡單的有監督學習無法滿足的地方。儘管存在多種偏好對齊技術，但本章將主要集中於 Direct Preference Optimization（DPO）以便簡潔和高效。<br><br>在本章中，我們將討論偏好對齊演算法，如 DPO，所需的資料類型。我們將建立自己的資料集，以修改模型的寫作風格，使其更加自然和真實。我們將介紹 DPO 演演算法，並將其實現以便將第 5 章訓練的模型對齊。<br><br>在本章中，我們將涵蓋以下主題：</div><details class="en"><summary>原文</summary><div class="en-text">Supervised Fine-Tuning (SFT) has been crucial in adapting LLMs to<br>perform specific tasks. However, SFT struggles to capture the nuances of<br>human preferences and the long tail of potential interactions that a model<br>might encounter. This limitation has led to the development of more<br>advanced techniques for aligning AI systems with human preferences,<br>grouped under the umbrella term preference alignment.<br>Preference alignment addresses the shortcomings of SFT by incorporating<br>direct human or AI feedback into the training process. This method allows a<br>more nuanced understanding of human preferences, especially in complex<br>scenarios where simple supervised learning falls short. While numerous<br>techniques exist for preference alignment, this chapter will primarily focus<br>on Direct Preference Optimization (DPO) for simplicity and efficiency.<br>In this chapter, we will talk about the type of data that is required by<br>preference alignment algorithms like DPO. We will build our own dataset to<br>modify the writing style of our model, making it less artificial and more<br>authentic. We will introduce the DPO algorithm and implement it to align<br>the model trained in Chapter 5.<br>In this chapter, we will cover the following topics:</div></details></div>
+<div class="pair"><div class="zh">理解偏好資料集<br>如何建立我們自己的偏好資料集<br>直接偏好最佳化（DPO）<br>在實踐中實現 DPO以對齊模型<br>本章結束時，您將能夠建立自己的偏好資料集並使用多種技術對齊模型。</div><details class="en"><summary>原文</summary><div class="en-text">Understanding preference datasets<br>How to create our own preference dataset<br>Direct preference optimization (DPO)<br>Implementing DPO in practice to align our model<br>By the end of this chapter, you will be able to create your own preference<br>datasets and align models with diverse techniques.</div></details></div>
+<div class="pair"><div class="zh">本章所有程式碼範例都可以在 GitHub 上找到，地址為 https://github.com/PacktPublishing/LLM-Engineering.</div><details class="en"><summary>原文</summary><div class="en-text">All the code examples from this chapter can be found on<br>GitHub at<br>https://github.com/PacktPublishing/LLM-<br>Engineering.</div></details></div>
+<h3 id="s2">認識偏好資料集<span class="en-title"> · Understanding preference datasets</span></h3>
+<div class="pair"><div class="zh">我們建立高品質偏好資料集的原則與第五章中討論的指令資料集相同。我們想要最大化樣本的準確性、多樣性和複雜度。為了實現這個目標，我們遵循圖 6.1 中所述的步驟：資料整理、去重、去汙染、品質評估、探索、生成和擴增。</div><details class="en"><summary>原文</summary><div class="en-text">The principles for creating high-quality preference datasets are the same as<br>those discussed in Chapter 5 for instruction datasets. We want to maximize<br>the accuracy, diversity, and complexity of our samples. To achieve this, we<br>follow the same stages, as outlined in Figure 6.1: data curation,<br>deduplication, decontamination, quality evaluation, exploration, generation,<br>and augmentation.</div></details></div>
+<div class="pair"><div class="zh">圖 6.1 - 本章涵蓋的後訓練資料管道概述</div><details class="en"><summary>原文</summary><div class="en-text">        Figure 6.1 - Overview of the post-training data pipeline covered in this chapter</div></details></div>
+<div class="pair"><div class="zh">避免重複，這部分將集中於指令和偏好資料集之主要差異。接著，我們將介紹偏好的樣本結構，並討論偏好資料集的理想大小。然後，我們將專注於建立指令資料集中最不同兩個階段：資料生成和評估。</div><details class="en"><summary>原文</summary><div class="en-text">To avoid repetition, this section will focus on the main differences between<br>instruction and preference datasets. We will introduce the structure of<br>preference samples and the ideal size for preference datasets. Then, we will<br>focus on the two stages that differ most from creating instruction datasets:<br>data generation and evaluation.</div></details></div>
+<div class="pair"><div class="zh">偏好資料集因為不同的訓練演演算法需要不同之資料要求，缺乏指令資料集的標準化。偏好資料是一個由人或語言模型排名的回應集合。這章將專注於 DPO，所以我們將考慮這個演演算法所需的特定資料格式，如圖 6.1 所示，DPO 資料集的結構簡單：每個指令都配有一個被選中答案和一個被拒絕答案。目的是訓練模型生成被選中的回應，而不是被拒絕的回應。</div><details class="en"><summary>原文</summary><div class="en-text">Preference data<br>Preference datasets lack the standardization of instruction datasets due to<br>varying data requirements across different training algorithms. Preference<br>data comprises a collection of responses to a given instruction, ranked by<br>humans or language models. This chapter focuses on DPO, so we will<br>examine the specific data format required by this algorithm.<br>As illustrated in Table 6.1, the structure of DPO datasets is straightforward:<br>each instruction is paired with one preferred answer and one rejected<br>answer. The objective is to train the model to generate the preferred<br>response rather than the rejected one.</div></details></div>
+<div class="pair"><div class="zh">八爪魚的笑話是這樣：為什麼八爪魚不喜歡上課？因為它總是抓住別人的問題。</div><details class="en"><summary>原文</summary><div class="en-text">Instruction<br>Tell me a joke about octopuses.</div></details></div>
+<div class="pair"><div class="zh">被選中回答                       被拒絕回答<br>為什麼章魚不在賭場玩牌？因為他們無法計算八點以後。                        如何需要多少顫抖來讓章魚笑？十顫抖。</div><details class="en"><summary>原文</summary><div class="en-text">Chosen answer                         Rejected answer<br>Why don&#x27;t octopuses play cards in     How many tickles does it take to<br>casinos? Because they can&#x27;t count     make an octopus laugh? Ten<br>past eight.                           tickles.</div></details></div>
+<div class="pair"><div class="zh">表 6.1 - mlabonne/orpo-dpo-mix-40k 資料集的範例樣本<br>在偏好資料集中，拒絕的回應和被選中的回應同等重要。沒有拒絕的回應，這個資料集就只是一個簡單的指令集。拒絕的回應代表我們想要模型中消除的行為。這提供了很多彈性，並允許我們</div><details class="en"><summary>原文</summary><div class="en-text">Table 6.1 - Example of sample from the mlabonne/orpo-dpo-mix-40k dataset<br>In preference datasets, the rejected response is as important as the chosen<br>one. Without the rejected response, the dataset would be a simple<br>instruction set. Rejected responses represent the behavior we aim to<br>eliminate from the model. This provides a lot of flexibility and allows us to</div></details></div>
+<div class="pair"><div class="zh">使用偏好資料集在許多情況下都更有利於使用。以下是一些使用偏好資料集比單獨使用監督式微調(SFT)更加有利的例子：<br><br>Chatbots：在對話人工智慧中，回應的品質通常取決於主觀因素，如自然性、參與度和上下文適合性。偏好資料集允許模型學習這些細微之處，通過比較更好的和更差的回應。單獨使用 SFT 可能無法捕捉到在特定情況下哪個回應較優於另一個。<br><br>Content moderation：判斷內容是否適合或違反指南通常涉及複雜的判斷。偏好資料集可以幫助模型學習區分邊緣案例，通過比較可接受和不可接受的內容範例。這比單獨使用 SFT 的二元分類更有效，因為它幫助模型理解調整決策的理由。<br><br>Summarization：摘要的品質通常取決於因素，如簡潔、相關性和一致性。通過使用偏好資料集，模型可以學習生成人們認為更加有用的和資訊豐富的摘要。單獨使用 SFT 可能導致摘要是技術上正確但對讀者不太可取。<br><br>Code generation：在編碼任務中，有時候有一些正確的解決方案，但有些更有效、可讀性更高或遵循更好的實踐。偏好資料集可以幫助模型學習這些品質方面的程式碼品質，可能無法被單獨使用 SFT 捕捉。<br><br>Creative writing：對於故事生成或詩歌寫作等任務，輸出品質高度主觀和多面向。偏好資料集可以捕捉人類對風格、創造性和藝術性的判斷。</div><details class="en"><summary>原文</summary><div class="en-text">use preference datasets in many contexts. Here is a list of examples where<br>preference datasets are more beneficial to use compared to using SFT alone:<br>Chatbots: In conversational AI, the quality of responses often depends<br>on subjective factors like naturalness, engagement, and contextual<br>appropriateness. A preference dataset allows the model to learn these<br>nuanced aspects by comparing better and worse responses. Simple SFT<br>might not capture the subtleties of what makes one response preferable<br>over another in a given context.<br>Content moderation: Determining whether content is appropriate or<br>violates guidelines often involves nuanced judgments. Preference<br>datasets can help the model learn to distinguish between borderline<br>cases by comparing examples of content that is and isn&#x27;t acceptable.<br>This is more effective than binary classification through SFT, as it<br>helps the model understand the reasoning behind moderation<br>decisions.<br>Summarization: The quality of a summary often depends on factors<br>like conciseness, relevance, and coherence. By using preference<br>datasets, models can learn to generate summaries that humans find<br>more useful and informative. Simple SFT might result in summaries<br>that are technically correct but less preferable to human readers.<br>Code generation: In coding tasks, there are often multiple correct<br>solutions, but some are more efficient or readable, or follow better<br>practices than others. Preference datasets can help the model learn<br>these qualitative aspects of code quality, which might not be captured<br>by simple correctness-based SFT.<br>Creative writing: For tasks like story generation or poetry writing, the<br>quality of the output is highly subjective and multifaceted. Preference<br>datasets can capture human judgments about style, creativity, and</div></details></div>
+<div class="pair"><div class="zh">情感影響比指令資料集更好，因為後者可能更多地關注技術正確性或遵循提示。<br>翻譯：傳統的指標，如BLEU分數，可以衡量翻譯的準確性，但它們不總是捕捉到翻譯的流暢性或自然性。偏好資料集可以幫助模型學習生產native speakers偏好的翻譯，即使多個翻譯都是技術正確的。<br>在所有這些情況下，偏好資料集啟用了一種更精細的訓練方法。它們捕捉到主觀品質評估和人類偏好，這些偏好超出了簡單的正確性或遵循指令。這種方法可以生產生成output，它不僅技術上正確，也與human judgment 和偏好在複雜、開放式任務中更好地對齊。<br>不同於指令資料集，沒有標準化的存儲格式，如Alpaca或ShareGPT。大多數偏好資料集遵循表 6.1 的結構，包含欄位：提示、偏好答案和被拒絕的答案。多輪對話在偏好對齊中很少見。在寫作時，主要微調庫不支持多輪對話，並通常只提取對話中的第一或最後一條訊息。</div><details class="en"><summary>原文</summary><div class="en-text">emotional impact better than instruction datasets, which might focus<br>more on technical correctness or adherence to prompts.<br>Translation: While traditional metrics like BLEU scores can measure<br>translation accuracy, they don&#x27;t always capture the fluency or<br>naturalness of the translation. Preference datasets can help models<br>learn to produce translations that native speakers prefer, even when<br>multiple translations are technically correct.<br>In all these scenarios, preference datasets enable a more refined training<br>approach. They capture subjective quality assessments and human<br>preferences that extend beyond simple correctness or adherence to<br>instructions. This method can produce models that generate output that is<br>not only technically accurate but also better aligned with human judgment<br>and preferences in complex, open-ended tasks.<br>Unlike instruction datasets, there are no standardized storage formats like<br>Alpaca or ShareGPT. Most preference datasets follow a structure similar to<br>that shown in Table 6.1, with columns for an instruction, a preferred answer,<br>and a rejected answer. Multi-turn conversations are uncommon in<br>preference alignment. At the time of writing, major fine-tuning libraries do<br>not support multi-turn conversations and typically extract only the first or<br>last message in a conversation.</div></details></div>
+<div class="pair"><div class="zh">資料量<br>DPO 資料集通常需要較少的樣本數量以對模型行為產生顯著影響。與指令資料集相同，所需樣本數量取決於模型大小和任務複雜度。較大的模型更能夠高效使用樣本，因此需要較少的資料，而複雜的任務則需要更多的例子以捕捉所需的行為。再次地，</div><details class="en"><summary>原文</summary><div class="en-text">Data quantity<br>DPO datasets typically require fewer samples than instruction datasets to<br>significantly impact model behavior. As with instruction datasets, the<br>required sample count depends on model size and task complexity. Larger<br>models are more sample-efficient and thus require less data, while complex<br>tasks demand more examples to capture the desired behavior. Once again,</div></details></div>
+<div class="pair"><div class="zh">資料品質是非常重要的，並且大量偏好對齊通常是有益的。<br>一般用於LLM提供商以改善微調模型的整體表現。這需要偏好資料集具有數百萬個樣本。主要AI業者，包括Nvidia和Meta，正在趨同於類似的後訓練管線，涉及多輪偏好對齊，以及廣泛使用合成資料。這種共識表明，這些方法正在推動語言模型能力的界限。<br>在較小規模上，開源社群使用樣本數量從10,000到100,000以提高模型性能。這種方法不僅能夠改善基準分數，也能夠治療網路後合併、刪減和其他修改。<br>一般而言，DPO比SFT具有較小的破壞性，並且對最終模型的影響較輕。<br>反之，像之前描述的任務需要較少偏好對齊。Task-specific alignment focuses on improving model performance for a particular function, such as modifying the writing style, refusing certain instructions, and so on. These alignments can often be achieved with smaller datasets, ranging from 100 to 10,000 preference pairs, depending on the task&#x27;s complexity.<br>一個需要少樣本的應用是指示模型聲明它不是由OpenAI、Meta或另一個LLM提供商訓練。這可以使用偏好資料集，where the rejected answers are those claiming alternative origins, and the chosen answers are responses where the model correctly states that it was trained by RLHF.</div><details class="en"><summary>原文</summary><div class="en-text">data quality is crucial, and a large number of preference pairs is generally<br>beneficial.<br>General-purpose alignment is used by LLM providers to improve the<br>overall performance of the fine-tuned models. This requires preference<br>datasets with millions of samples. Major players in the AI industry,<br>including Nvidia and Meta, are converging on similar post-training<br>pipelines, involving multiple rounds of preference alignment, and extensive<br>use of synthetic data. This consensus suggests that these methods are<br>proving to be the most effective for pushing the boundaries of language<br>model capabilities.<br>On a smaller scale, the open-source community uses datasets ranging from<br>10,000 to 100,000 samples to enhance model performance. This approach<br>has proven effective not only in improving benchmark scores but also in<br>healing networks after merging, pruning, and other modifications.<br>Generally, DPO is less destructive than SFT and has a milder impact on the<br>final model.<br>On the other hand, tasks like the ones previously described require fewer<br>preference pairs. Task-specific alignment focuses on improving model<br>performance for a particular function, such as modifying the writing style,<br>refusing certain instructions, and so on. These alignments can often be<br>achieved with smaller datasets, ranging from 100 to 10,000 preference<br>pairs, depending on the task&#x27;s complexity.<br>An example of an application that requires few samples is instructing the<br>model to state that it wasn&#x27;t trained by OpenAI, Meta, or another LLM<br>provider. This can be achieved using a preference dataset, where the<br>rejected answers are those claiming alternative origins, and the chosen<br>answers are responses where the model correctly states that it was trained</div></details></div>
+<div class="pair"><div class="zh">由你。這個任務可以使用小於 200 到 500 pairs 的資料集。</div><details class="en"><summary>原文</summary><div class="en-text">by you. A relatively small dataset of 200 to 500 pairs can be enough for this<br>task.</div></details></div>
+<h3 id="s3">資料生成與評估<span class="en-title"> · Data generation and evaluation</span></h3>
+<div class="pair"><div class="zh">建立偏好資料集時，資料生成和評估緊密相連。首先，我們建立答案，然後對其進行評分，以製作最終的資料集。在以下，我們將這兩個步驟合為一個過程。</div><details class="en"><summary>原文</summary><div class="en-text">When creating preference datasets, data generation and evaluation are<br>closely linked. We first create answers and then rate them to make the final<br>dataset. In the following, we introduce both steps as one process instead of<br>two separate ones.</div></details></div>
+<div class="pair"><div class="zh">生成偏好<br>在建立新的偏好資料前，先查看相關的開源資料集。這些資料集相比指令資料集較少，但你可以在 Hugging Face Hub 找到高品質的偏好資料集。這些資料集可以用於特定的任務或添加到自己的資料集。知名偏好資料集包括 Anthropic HH-RLHF 資料集，它具有人類對有幫助和無害 AI 回應的偏好，以及 OpenAI Summarize from Human Feedback 資料集，該資料集專注於文章摘要。<br>DPO 資料集可以使用多種方法建立，每種方法都有其自己的優點、缺點和可擴展性。這些方法可以根據特定的應用程序進行調整，並需要不同程度的人類回饋。我們將這些方法分為四個主要類別：<br>人類生成、人類評估資料集：這種方法涉及僱傭人們建立對提示的回應，並評估這些回應的品質。雖然這種方法可以捕捉到微妙的人類偏好，但它非常資源密集且難以擴展，因此主要由大型 AI 公司使用。</div><details class="en"><summary>原文</summary><div class="en-text">Generating preferences<br>Before making new preference data, it&#x27;s good to look at relevant open-<br>source datasets. There are fewer of these compared to instruction datasets,<br>but you can find high-quality preference datasets on the Hugging Face Hub.<br>These can be used for specific tasks or to add to your own dataset. Well-<br>known preference datasets include the Anthropic HH-RLHF dataset, which<br>has human preferences for helpful and harmless AI responses, and the<br>OpenAI Summarize from Human Feedback dataset, which focuses on<br>article summaries.<br>DPO datasets can be created using various methods, each with its own<br>trade-offs between quality, cost, and scalability. These methods can be<br>tailored to specific applications and require varying degrees of human<br>feedback. We divide them into four main categories:<br>Human-generated, human-evaluated datasets: This method<br>involves hiring people to both create responses to prompts and<br>evaluate the quality of these responses. While this approach can<br>capture nuanced human preferences and is ideal for complex tasks, it&#x27;s<br>extremely resource-intensive and difficult to scale. As a result, it&#x27;s<br>primarily used by large AI companies with substantial resources.</div></details></div>
+<div class="pair"><div class="zh">人類生成、LLM評估的資料集：這種方法可以在您有大量現存人類生成內容時使用。然而，這種方法在實踐中很少被使用，因為它仍需要大量的人類輸入以生成回應，而可能在 LLM 評估階段錯過了微妙的偏好。<br>     LLM生成、人類評估的資料集：這種方法提供了品質和效率之間的良好平衡。LLMs 會對提示生成多個回應，然後人類排名這些回應。這種方法經常被選擇，因為人類通常比從頭寫答案更好地評估答案。它允許快速生成多樣的回應，而仍能夠有效捕捉人類偏好。然而，它可能不能提供人類可能生成的創造性或意外的回應。<br>     LLM生成、LLM評估的資料集：完全合成的資料集，兩者都是由 LLMs 完成的，正在因為其可擴展性和成本效率而日益普遍。這種方法可以快速生產大量資料，並隨著 LLM 能力提高而改善。但是，它需要小心地設計提示，以確保品質和多樣性，並可能傳播生成 LLM 的偏見或限制。<br>在實踐中，人類生成的資料集很昂貴、難以擴展且不一定是最高品質。另一方面，人類評估非常有價值，但可以很難擴展，這就是為什麼大型資料集需要 LLM 評估。在此外，您還需要考慮您如何獲得您的資料和您計畫使用它的方式。例如，具有多用戶的應用程式可以嵌入回饋機制，以提供偏好。這可以是簡單的喜歡和不喜歡分數，或者更深入的文字評價。</div><details class="en"><summary>原文</summary><div class="en-text">     Human-generated, LLM-evaluated datasets: This method can be<br>     useful if you have a lot of existing human-generated content. However,<br>     it&#x27;s rarely used in practice due to inefficiency, as it still requires<br>     significant human input for response generation while potentially<br>     missing nuanced preferences during the LLM evaluation stage.<br>     LLM-generated, human-evaluated datasets: This method offers a<br>     good balance between quality and efficiency. LLMs generate multiple<br>     responses to prompts, and humans rank these responses. This approach<br>     is often preferred because humans are generally better at judging<br>     answers than writing them from scratch. It allows the rapid generation<br>     of diverse responses while still capturing human preferences<br>     effectively. However, it may not provide creative or unexpected<br>     responses that humans might generate.<br>     LLM-generated, LLM-evaluated datasets: Fully synthetic datasets,<br>     where both generation and evaluation are done by LLMs, are<br>     becoming increasingly common due to their scalability and cost-<br>     effectiveness. This method can produce massive datasets quickly and<br>     improves as LLM capabilities advance. However, it requires careful<br>     prompt engineering to ensure quality and diversity, and may perpetuate<br>     biases or limitations of the generating LLM.<br>In practice, human-generated datasets are expensive, difficult to scale, and<br>not necessarily of the highest quality. On the other hand, human evaluation<br>is quite valuable but can be difficult to scale, which is why large datasets<br>benefit from LLM evaluation. In addition to these high-level considerations,<br>the way you obtain your data and how you plan to use it also need to be<br>considered. For example, applications with many users can embed a<br>feedback mechanism to provide preferences. This can be as simple as a<br>like and dislike score, or something more in-depth with text.</div></details></div>
+<div class="pair"><div class="zh">注意評估不總是必要的偏好可以自然地從生成過程中出現。例如，可以使用高品質模型生成偏好的輸出，並使用低品質或故意有缺陷的模型生產較少偏好的替代選項。這樣就能夠在偏好資料集中創造明確的區分，讓AI系統更有效地識別和模擬高品質輸出。Intel/orca_dpo_pairs dataset可在Hugging Face Hub上下載，並使用這個過程建立。<br><br>還有一種方法是比較模型生成的輸出與人類寫下的回應，這可以提供有關模型是否與實際的人偏好相符的見解，並指出模型可能缺乏的地方。這可以用來複製特定的風格並給予模型更加真實的tone。</div><details class="en"><summary>原文</summary><div class="en-text">Note that evaluation is not always required and preferences can emerge<br>naturally from the generation process. For instance, it is possible to use a<br>high-quality model to generate preferred outputs and a lower-quality or<br>intentionally flawed model to produce less preferred alternatives. This<br>creates a clear distinction in the preference dataset, allowing more effective<br>training of AI systems to recognize and emulate high-quality outputs. The<br>Intel/orca_dpo_pairs dataset available on the Hugging Face Hub was<br>created with this process.<br>Another approach is to compare model-generated outputs with human-<br>written responses, which can provide insights into how well the model<br>aligns with actual human preferences and highlight areas where the model<br>may be lacking. This can be used to copy a particular style and give a more<br>authentic tone to the model.</div></details></div>
+<h4 id="s4">資料生成要訣<span class="en-title"> · Tips for data generation</span></h4>
+<div class="pair"><div class="zh">資料生成在指令和偏好資料集之間保持一致。提示應該設計以鼓勵模型回應的多樣性和複雜度。通過建立明確要求不同方法或風格的提示，我們可以確保廣泛的輸出，捕捉人類偏好的多樣性。<br><br>例如，在生成摘要時，可以要求變化如簡潔摘要、詳細摘要和關鍵點摘要。這種方法不僅生產多樣化的資料集，也有助於理解不同風格和方法與人類偏好之間的對齊。<br><br>引入輸出的可變性是生成synthetic偏好資料集的一個重要方面。我們可以通過調整輸出以達到這一目標。</div><details class="en"><summary>原文</summary><div class="en-text">The data generation is consistent between instruction and preference<br>datasets. Prompts should be designed to encourage diversity and complexity<br>in the model&#x27;s responses. By crafting prompts that explicitly request<br>different approaches or styles, we can ensure a wide range of outputs that<br>capture the varied nature of human preferences.<br>For instance, when generating summaries, one might request variations<br>such as concise summaries, detailed summaries, and summaries focusing on<br>key points. This approach not only produces a diverse dataset but also helps<br>in understanding how different styles and approaches align with human<br>preferences.<br>Introducing variability in the outputs is another crucial aspect of generating<br>synthetic preference datasets. This can be achieved by manipulating the</div></details></div>
+<div class="pair"><div class="zh">溫度設定或使用其他採樣方法在 LLM 中。<br>較高的溫度設定傾向生產更多創造性和多樣化的回應，而較低的設定結果則是更加集中和確定的輸出。這種情況中，存在著多樣性和一致性的權衡，取決於我們想生成什麼樣的資料。例如，生成程式碼需要低創造力，因此需要低溫度，而寫作文章可以使用高溫度。<br>使用多個 LLM 來生成樣本可能比使用單一模型更好。一些 LLM 在特定任務中表現得更好，這種方法也增加了多樣性。這種方法由流行的開源資料集 argilla/Capybara-Preferences 使用，將 GPT-4 與開放權重模型結合。然後評估過程選擇被選中的和被拒絕的回答。</div><details class="en"><summary>原文</summary><div class="en-text">temperature settings or employing other sampling methods in the LLM.<br>Higher temperature settings tend to produce more creative and diverse<br>responses, while lower settings result in more focused and deterministic<br>outputs. This creates a trade-off between diversity and coherence, which<br>depends on the kind of data we want to generate. For example, generating<br>code requires low creativity, thus low temperature, while writing articles<br>can be high temperature.<br>Using multiple LLMs to generate samples can be better than using just one<br>model. Some LLMs are better at specific tasks, and this approach also adds<br>more variety. This approach is used by popular open-source datasets like<br>argilla/Capybara-Preferences, combining GPT-4 with open-weight<br>models. The evaluation process then selects the chosen and the rejected<br>answers.</div></details></div>
+<h4 id="s5">偏好評估<span class="en-title"> · Evaluating preferences</span></h4>
+<div class="pair"><div class="zh">資料評估可以由人類評審或自動化使用LLM。LLM評估涉及開發詳細的準則、建立明確地傳遞這些指南給LLM的提示，並使用模型選擇偏好和被拒絕的回應。儘管LLM評估比人類評審更可擴展，且允許一致地應用準則，但這種LLM評估的品質直接取決於模型的性能和提供的指南。它可能會錯過微妙的人類偏好或文化細節。然而，以LLMs繼續改善為目標，它們的能力也將繼續改善，從而導致時間推移中更高品質的資料集。<br><br>實現LLM評估偏好資料集可以通過絕對分數或pairwise排名。在絕對分數中，LLM指派...</div><details class="en"><summary>原文</summary><div class="en-text">Data evaluation can be performed by human raters or automated with<br>LLMs. LLM evaluation involves developing detailed criteria, creating a<br>prompt that clearly communicates these guidelines to the LLM, and using<br>the model to select preferred and rejected responses. While more scalable<br>than human rating and allowing the consistent application of criteria, this<br>quality of LLM evaluation depends directly on the model&#x27;s performance<br>and the provided guidelines. It may miss subtle human preferences or<br>cultural nuances. However, as LLMs continue to improve, their ability to<br>make nuanced judgments improves as well, potentially leading to higher-<br>quality datasets over time.<br>Implementing LLM evaluation for preference datasets can be done through<br>absolute scoring or pairwise ranking. In absolute scoring, the LLM assigns</div></details></div>
+<div class="pair"><div class="zh">使用預先定義的標準分配一個數值分數或分類評價給每個回應。這種方法簡單易行，但可能在不同提示或評估會話中出現不一致。相對排名則是將LLM與兩個回應並排，請它選擇較好的回應或排名。這種方法更接近人類評估的格式，可以導致更加一致的結果。<br><br>為了絕對分數，您需要建立一個提示，該提示概述評估標準，並請LLM根據特定的比例（例如1-5或差/中/好/優）評價回應。提示可能如下：&quot;根據相關性、連貫性和幫助性評價以下回應：[插入回應]。&quot;相對排名的提示則是：&quot;比較以下兩個回應。哪一個在相關性、連貫性和幫助性方面較好？Response A：[插入回應A] Response B：[插入回應B]。&quot;<br><br>偏好資料集的比較性質使相對排名成為評估的理想方法。這種方法通常更加準確，並且與人類判斷更相關。相對排名模擬了自然的人們比較選項，讓人類評價員和LLM都能夠提供一致和有意義的評估。<br><br>我們可以通過提供真實答案並使用chain-of-thought reasoning further improve the accuracy of pairwise ranking。這種方法鼓勵評估LLM考慮多個回應的方面，並將決策過程表達出來，從而導致更加徹底和正當的評估。如果沒有真實答案，我們可以提示LLM建立一個評分註釋，這種技術特別適用於無法提供真實答案的情況。</div><details class="en"><summary>原文</summary><div class="en-text">a numerical score or categorical rating to each response based on predefined<br>criteria. This method is straightforward but may suffer from inconsistency<br>across different prompts or evaluation sessions. Pairwise ranking, on the<br>other hand, involves presenting the LLM with two responses and asking it<br>to choose the better one or rank them. This approach more closely mimics<br>the format of human evaluation and can lead to more consistent results.<br>For absolute scoring, you would create a prompt that outlines the evaluation<br>criteria and asks the LLM to rate the response on a specific scale (e.g., 1-5<br>or poor/fair/good/excellent). The prompt might look like this: &quot;Rate the<br>following response on a scale of 1-5 based on relevance, coherence, and<br>helpfulness: [INSERT RESPONSE].&quot; For pairwise ranking, the prompt could<br>be: &quot;Compare the following two responses. Which one is better in terms of<br>relevance, coherence, and helpfulness? Response A: [INSERT RESPONSE A]<br>Response B: [INSERT RESPONSE B].&quot;<br>The comparative nature of preference datasets makes pairwise ranking an<br>ideal approach for evaluation. This method is generally more accurate and<br>more closely correlated to human judgment than absolute scoring. Pairwise<br>ranking mimics the natural way humans compare options, making it easier<br>for both human raters and LLMs to provide consistent and meaningful<br>evaluations.<br>We can further improve the accuracy of pairwise ranking by providing a<br>ground-truth answer and using chain-of-thought reasoning. This approach<br>encourages the evaluating LLM to consider multiple aspects of the<br>responses and articulate its decision-making process, leading to more<br>thorough and justified evaluations. When no ground-truth answer is<br>available, we can prompt the LLM to create a grading note, which is a<br>description of the expected answer. This technique works particularly well</div></details></div>
+<div class="pair"><div class="zh">在某些情況下，LLM對於特定主題的知識不夠充分，這樣就迫使模型要先確立評估標準後再進行回應評估。<br>以下是使用 LLM 作為法官的提示，以實現成對排名：</div><details class="en"><summary>原文</summary><div class="en-text">   in scenarios where the LLM doesn&#x27;t have extensive knowledge about a<br>   given topic, as it forces the model to establish clear criteria for evaluation<br>   before assessing the responses.<br>   Here&#x27;s a concrete implementation of an LLM-as-a-judge prompt to perform<br>   pairwise ranking:</div></details></div>
+<pre class="code">   Instruction
+   You are an answer judge. Your goal is to compare answer A and answer
+   B. I want to know which answer does a better job of answering the
+   instruction in terms of relevance, accuracy, completeness, clarity,
+   structure, and conciseness.
+   Instruction: {instruction}
+   Answer A: {answer_a}
+   Answer B: {answer_b}
+   Explain your reasoning step by step and output the letter of the best
+   answer using the following structure:
+   Reasoning: (compare the two answers)
+   Best answer: (A or B)</pre>
+<div class="pair"><div class="zh">圖 6.2 - LLM 作為裁判的提示對象，pairwise 排名中有一個指令和兩個回答<br>   不過需要注意的是，LLM 基於評估可能受到多種偏見：<br>   位置偏見：在相對分數中，LLM 裁判傾向於偏好第一個回答。這種偏見可以扭曲結果，導致不正確的結論。</div><details class="en"><summary>原文</summary><div class="en-text">   Table 6.2 - Example of LLM-as-a-judge prompt for pairwise ranking with one instruction and two<br>answers<br>   However, it&#x27;s important to note that LLM-based evaluation can be subject<br>   to several types of bias:<br>   Position bias: In relative scoring, LLM judges tend to favor the first<br>   answer presented. This bias can skew results and lead to inaccurate</div></details></div>
+<div class="pair"><div class="zh">偏好。<br>長度偏差：類似於人類，RLHF 判斷器通常對較長的回答表現出偏好，可能會忽略較短、更加concise 的回應。<br>家系偏差：RLHF 判斷器可能偏好由自己或同一家模型生成的回答，可能是因為語言模式或知識庫相似性。<br>以減少這些偏見並提高偏好資料集的品質，可以實施多種解決方案。其中一個重要方法是將每個比較中答案 A 和答案 B 的順序隨機化，這可以抵抗位置偏見，確保評估不會受到呈現順序的一致影響。另一個有價值的策略涉及提供少量示例，展示平衡分配的分數。這些示例可以 calibrate 判斷 RLHF 的內部分數機制，並有效地解決長度和家系偏差，表明較短的回答或來自不同模型家庭的回答也可以是高品質的。另外，使用多個模型作為陪審團，而不是單獨依賴一個 RLHF 判斷器，可以對評估過程的可靠性產生顯著影響。這種多模型方法可以平衡出任何單個模型可能存在的偏見，導致更全面的和準確的回應評估。在下一節中，我們將建立自己的偏好資料集。我們將依賴資料生成過程自然建立被選中的（人類生成）回答和被拒絕的（RLHF 生成）回答。</div><details class="en"><summary>原文</summary><div class="en-text">preferences.<br>Length bias: Similar to humans, LLM judges often show a preference<br>for longer answers, potentially overlooking the quality of shorter, more<br>concise responses.<br>Family bias: LLM judges may favor responses that are generated by<br>themselves or models from the same family, potentially due to<br>similarities in language patterns or knowledge bases.<br>To mitigate these biases and enhance the quality of preference datasets,<br>several solutions can be implemented. One key approach is to randomize<br>the order of answer A and answer B in each comparison, which can<br>counteract position bias by ensuring that the order of presentation doesn&#x27;t<br>consistently influence the evaluation. Another valuable strategy involves<br>providing few-shot examples that demonstrate a balanced distribution of<br>scores. These examples serve to calibrate the judge LLM&#x27;s internal scoring<br>mechanism and can effectively address both length and family bias by<br>illustrating that shorter answers or those from different model families can<br>also be of high quality. Additionally, employing multiple models as a jury,<br>rather than relying on a single LLM judge, can significantly improve the<br>robustness of the evaluation process. This multi-model approach helps to<br>balance out individual biases that may be present in any single model,<br>leading to a more comprehensive and accurate assessment of the responses.<br>In the next section, we will create our own preference dataset. We will rely<br>on the data generation process to naturally create chosen (human-generated)<br>and rejected (LLM-generated) answers.</div></details></div>
+<h3 id="s6">建立我們自己的偏好資料集<span class="en-title"> · Creating our own preference dataset</span></h3>
+<div class="pair"><div class="zh">我們的模型目前可以寫出關於機器學習主題的段落，但它不具有原作者的寫作風格。這是一個偏好對齊的典型用例，我們想讓模型的「聲音」更接近原始資料。需要注意的是，實驗結果表明 DPO tend to make models more verbose and pushes them to use very formal language.因此，訓練將需要使用 DPO 手術避免這個陷阱，而不是採用這些博客文章的較不正式風格。在這一節中，我們將建立一個偏好資料集，其中被選中的答案是文本摘錄，而被拒絕的答案則是模型生成的。要實現它，我們將修改第 5 章中建立的程式碼，這個程式碼是用於生成指令資料集。<br><br>在前一節中，偏好和指令資料集都依賴同樣的原理。相反，我們需要的是三元組（指令、答案 1、答案 2）。這個設定中有趣的是，我們有文本塊中的真實答案，這意味著我們不需要像 LLM 判官那樣複雜的評估過程。我們將實現兩個額外的品質濾波器，基於長度和標點符號。 圖 6.2 簡要了整個流程：</div><details class="en"><summary>原文</summary><div class="en-text">Our model can currently write paragraphs about topics related to machine<br>learning, but it doesn&#x27;t have the same writing style as the original authors.<br>This is a typical use case for preference alignment, where we want to<br>change the &quot;voice&quot; of the model to closely imitate the source data. It&#x27;s<br>important to note that, experimentally, DPO tends to make models more<br>verbose and pushes them to use very formal language. Therefore, the<br>training will need to use DPO surgically to avoid this pitfall and instead<br>adopt the less formal style of these blog articles.<br>In this section, we will create a preference dataset where the chosen<br>answers are extracts from the text, while rejected answers are generated by<br>the model. To implement it, we will modify the code created in Chapter 5,<br>which was designed to generate instruction datasets.<br>As seen in the previous section, preference and instruction datasets rely on<br>the same principles. Instead of pairs of instructions and answers, we need<br>triples (instruction, answer 1, answer 2). What&#x27;s interesting in this setting is<br>that we have ground-truth answers in the text chunks, which means we<br>don&#x27;t need complex evaluation processes like LLM judges. To make sure<br>that these extracts are high-quality, we will implement two additional<br>quality filters, based on length and punctuation. Figure 6.2 summarizes the<br>end-to-end process:</div></details></div>
+<div class="pair"><div class="zh">圖 6.2 - 原始文本到偏好資料集的合成資料生成管線</div><details class="en"><summary>原文</summary><div class="en-text">Figure 6.2 - Synthetic data generation pipeline from raw text to preference dataset</div></details></div>
+<div class="pair"><div class="zh">我們現在準備實現偏好資料生成管道：<br>1. 我們首先導入必要的庫。</div><details class="en"><summary>原文</summary><div class="en-text">We are now ready to implement the preference data generation pipeline:<br>1. We start by importing the necessary libraries.</div></details></div>
+<pre class="code">import concurrent.futures
+import json
+import re
+from typing import List, Tuple
+from datasets import Dataset
+from openai import OpenAI
+from tqdm.auto import tqdm</pre>
+<div class="pair"><div class="zh">2. 現在我們不再使用 InstructionAnswerSet 類別，而是使用 PreferenceSet 類別。這個類別旨在處理三元組：指令、被拒絕的生成答案和被選中的提取答案。</div><details class="en"><summary>原文</summary><div class="en-text">2. Instead of the InstructionAnswerSet class, we now have a<br>PreferenceSet class. This class is designed to handle triples of<br>instructions, generated answers (rejected), and extracted answers<br>(chosen).</div></details></div>
+<pre class="code">class PreferenceSet:
+def __init__(self, triples: List[Tuple[str, str, str]])
+        self.triples = triples
+@classmethod
+d f f      j  ( l   j        t    t )      &#x27;P f      S t&#x27;</pre>
+<pre class="code">    def from_json(cls, json_str: str) -&gt; &#x27;PreferenceSet&#x27;:
+    data = json.loads(json_str)
+    triples = [(triple[&#x27;instruction&#x27;], triple[&#x27;generate
+                 for triple in data[&#x27;preference_triples&#x27;]
+    return cls(triples)
+    def __iter__(self):
+    return iter(self.triples)</pre>
+<pre class="code">       3. The load_articles_from_json, clean_text, and extract_substrings
+    functions remain unchanged from the original code. Let&#x27;s start with
+    load_articles_from_json, which takes our JSON file
+    (cleaned_documents.json) containing the articles as input and returns
+    a Hugging Face dataset with the text and metadata (ID, platform,
+    author ID, author full name, link).</pre>
+<pre class="code">    def load_articles_from_json(file_path: str) -&gt; Dataset:
+    with open(file_path, &quot;r&quot;) as file:
+     data = json.load(file)
+    return Dataset.from_dict(
+     {
+                          &quot;id&quot;: [item[&quot;id&quot;] for item in data[&quot;artifact_da
+                          &quot;content&quot;: [item[&quot;content&quot;] for item in data[&quot;a
+                          &quot;platform&quot;: [item[&quot;platform&quot;] for item in data[
+                          &quot;author_id&quot;: [item[&quot;author_id&quot;] for item in dat
+                          &quot;author_full_name&quot;: [item[&quot;author_full_name&quot;] f
+                          &quot;link&quot;: [item[&quot;link&quot;] for item in data[&quot;artifac
+     }
+    )</pre>
+<div class="pair"><div class="zh">4. clean_text 函數除去非字母和數字的字符，除了撇號、句點、逗號、感嘆號和問號外。它還將多個空白字符替換為單個空白，以確保正確的格式化。</div><details class="en"><summary>原文</summary><div class="en-text">4. The clean_text function removes non-alphanumeric characters except<br>  for apostrophes, periods, commas, exclamation marks, and question<br>  marks. It also replaces multiple whitespaces with a single space to<br>  ensure proper formatting.</div></details></div>
+<pre class="code">    def clean_text(text: str) -&gt; str: text = re.sub(r&quot;[^\w\s
+    return text.strip()</pre>
+<div class="pair"><div class="zh">5. 提取子串函數將文章分割成長度在 1,000 到 2,000 字符之間的塊，以確保分割不會破壞句子，從而修改其含義，我們使用正規表達式僅在句子結尾後進行分割。</div><details class="en"><summary>原文</summary><div class="en-text">    5. The extract_substrings function splits articles into chunks with a<br>    length between 1,000 and 2,000 characters. To make sure that the<br>    splitting doesn&#x27;t break sentences, which could modify their meanings,<br>    we use a regex to only split after the end of a sentence.</div></details></div>
+<pre class="code">    def extract_substrings(dataset: Dataset, min_length: int =
+    extracts = []
+                  sentence_pattern = r&quot;(?&lt;!\w\.\w.)(?&lt;![A-Z][a-z]\.)(?&lt;=\
+    for article in dataset[&quot;content&quot;]:
+    cleaned_article = clean_text(article)
+    sentences = re.split(sentence_pattern, cleaned_arti
+    current_chunk = &quot;&quot;
+    for sentence in sentences:
+    sentence = sentence.strip()
+    if not sentence:
+    continue
+    if len(current_chunk) + len(sentence) &lt;= max_le
+    current_chunk += sentence + &quot; &quot;
+    else:
+    if len(current_chunk) &gt;= min_length:
+        extracts.append(current_chunk.strip())
+    current_chunk = sentence + &quot; &quot;
+    if len(current_chunk) &gt;= min_length:
+    extracts.append(current_chunk.strip())
+    return extracts</pre>
+<div class="pair"><div class="zh">6. 生成偏好三元組函數將取代原始指令回答對的函數。提示是從指令版本中衍生出來，並且是為了生成三元組而不是對。它還提供一般性指導關於三元組類型。</div><details class="en"><summary>原文</summary><div class="en-text">6. The generate_preference_triples function replaces the original<br>  generate_instruction_answer_pairs function. The prompt is adapted<br>  from the instruction version and is designed to generate triples instead<br>  of pairs. It also provides general guidance about the type of</div></details></div>
+<div class="pair"><div class="zh">我們對於指令的興趣是，從文章中提取答案，以及如何格式化他們。</div><details class="en"><summary>原文</summary><div class="en-text">instructions we&#x27;re interested in, how to extract answers from articles,<br>and how to style them:</div></details></div>
+<pre class="code">def generate_preference_triples(extract: str, client: OpenA
+                prompt = f&quot;&quot;&quot;Based on the following extract, generate f
+1. An instruction asking about a specific topic in the cont
+2. A generated answer that attempts to answer the instructi
+3. An extracted answer that is a relevant excerpt directly
+Instructions must be self-contained and general, without ex
+Important:
+- Ensure that the extracted answer is a verbatim copy from
+- Do not add any ellipsis (...) or [...]              to indicate skipp
+- If the relevant text is not continuous, use two separate
+Provide your response in JSON format with the following str
+{{
+   &quot;preference_triples&quot;: [
+    {{
+           &quot;instruction&quot;: &quot;...&quot;,
+           &quot;generated_answer&quot;: &quot;...&quot;,
+           &quot;extracted_answer&quot;: &quot;...&quot;
+    }},
+    ...
+   ]
+}}
+   Extract:
+   {extract}
+&quot;&quot;&quot;</pre>
+<div class="pair"><div class="zh">7. 在同一個函數中，我們使用 GPT-4o-mini 生成答案，使用 JSON 模式。我們在系統提示中指定我們想要三元組，而不是對。JSON 回答直接被 PreferenceSet 類別解析以返回預期的列表。</div><details class="en"><summary>原文</summary><div class="en-text">7. In the same function, we use GPT-4o-mini to generate our answers<br>using JSON mode. We specify in the system prompt that we want<br>triples instead of pairs. The JSON answers are directly parsed by our<br>PreferenceSet class to return the expected list of tuples.</div></details></div>
+<pre class="code">   completion = client.chat.completions.create(
+    model=&quot;gpt-4o-mini&quot;,
+    messages=[</pre>
+<pre class="code">           {</pre>
+<pre class="code">       {
+         &quot;role&quot;: &quot;system&quot;,
+         &quot;content&quot;: &quot;You are a helpful assistant who
+       },
+       {&quot;role&quot;: &quot;user&quot;, &quot;content&quot;: prompt},
+     ],
+     response_format={&quot;type&quot;: &quot;json_object&quot;},
+     max_tokens=2000,
+     temperature=0.7,
+    )
+    result = PreferenceSet.from_json(completion.choices[0].
+    return result.triples</pre>
+<div class="pair"><div class="zh">8. 對偏好資料管線中引入了兩個新的過濾函數：filter_short_answers 和 filter_answer_format。這些函數將刪除短答案，並確保答案以大寫字母開頭，結尾以正確的標點符號。我們使用這些函數作為啟發式方法，以刪除品質不高的樣本。</div><details class="en"><summary>原文</summary><div class="en-text">    8. Two new filtering functions are introduced for the preference data<br>    pipeline: filter_short_answers and filter_answer_format. These<br>    functions filter out short answers and ensure that answers start with an<br>    uppercase letter and end with proper punctuation. We use them as<br>    heuristics to filter out samples with poor quality.</div></details></div>
+<pre class="code">    def filter_short_answers(dataset: Dataset, min_length: int
+    def is_long_enough(example):
+     return len(example[&#x27;chosen&#x27;]) &gt;= min_length
+    return dataset.filter(is_long_enough)
+    def filter_answer_format(dataset: Dataset) -&gt; Dataset:
+    def is_valid_format(example):
+     chosen = example[&#x27;chosen&#x27;]
+     return (len(chosen) &gt; 0 and
+    chosen[0].isupper() and
+    chosen[-1] in (&#x27;.&#x27;, &#x27;!&#x27;, &#x27;?&#x27;))
+    return dataset.filter(is_valid_format)</pre>
+<div class="pair"><div class="zh">9. create_preference_dataset 函數取代了原始的create_instruction_dataset 函數。這個函數現在可以使用三元組，而不是對偶，並且在結果中使用不同的欄位名稱。</div><details class="en"><summary>原文</summary><div class="en-text">9. The create_preference_dataset function replaces the original<br>  create_instruction_dataset function. This function now works with<br>  triples instead of pairs and uses different column names in the resulting<br>  dataset.</div></details></div>
+<pre class="code">def create_preference_dataset(dataset: Dataset, client: Ope
+    extracts = extract_substrings(dataset)
+    preference_triples = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=
+     futures = [
+      executor.submit(generate_preference_triples, ex
+      for extract in extracts
+     ]
+     for future in tqdm(concurrent.futures.as_completed(
+      preference_triples.extend(future.result())
+    instructions, generated_answers, extracted_answers = zi
+    return Dataset.from_dict(
+     {
+      &quot;prompt&quot;: list(instructions),
+      &quot;rejected&quot;: list(generated_answers),
+      &quot;chosen&quot;: list(extracted_answers)
+     }
+    )</pre>
+<div class="pair"><div class="zh">10. 主函數已經更新以包含新的篩選步驟，並使用偏好資料集建立函數：</div><details class="en"><summary>原文</summary><div class="en-text">    10. The main function is updated to include the new filtering steps and to<br>    use the preference dataset creation function:</div></details></div>
+<pre class="code">    def main(dataset_id: str) -&gt; Dataset:
+    client = OpenAI()
+    # 1. Load the raw data
+    raw_dataset = load_articles_from_json(&quot;cleaned_document
+    print(&quot;Raw dataset:&quot;)
+    print(raw_dataset.to_pandas())
+    # 2. Create preference dataset
+    dataset = create_preference_dataset(raw_dataset, client
+    print(&quot;Preference dataset:&quot;)
+    print(dataset.to_pandas())
+    # 3. Filter out samples with short answers
+    dataset = filter_short_answers(dataset)
+    # 4. Filter answers based on format
+    dataset = filter_answer_format(dataset)
+    # 5. Export</pre>
+<pre class="code">    d t t h t  h b(d t    t id)</pre>
+<pre class="code">            dataset.push_to_hub(dataset_id)
+            return dataset</pre>
+<pre class="code">    The create_preference_dataset() function generated 2,970 samples. This
+    dataset is then heavily filtered to only retain 1,467 samples by removing
+    answers that are too short or not properly formatted (for example, answers
+    that start with an uppercase letter or end with a period, exclamation mark,
+    or question mark).
+    The final dataset is available on the Hugging Face Hub at the following
+    address:
+    https://huggingface.co/datasets/mlabonne/llmtwin-
+    dpo. You can see in Figure 6.3 an example that captures a subtle nuance in
+    terms of writing style. Both answers are correct, but the chosen (extracted)
+    answer sounds slightly more casual.</pre>
+<div class="pair"><div class="zh">圖 6.3 - mlabonne/llmtwin-dpo 偏好資料集的 Hugging Face Hub 繪圖<br>我們多次重複了提示以生成這個資料集。這需要一些手動評估和實驗，直到我們達到了滿意的結果。提示的品質在這個過程中是非常重要的，這就是為什麼建議您遵循類似的過程來生成自己的偏好資料集。</div><details class="en"><summary>原文</summary><div class="en-text"> Figure 6.3 - Screenshot of the mlabonne/llmtwin-dpo preference dataset on the Hugging Face Hub<br>To produce this dataset, we iterated many times over the prompt to generate<br>the data. This required some manual evaluation and experiments until we<br>reached satisfying results. The quality of the prompt is fundamental in this<br>process, which is why it is recommended to follow a similar process to<br>generate your own preference datasets.</div></details></div>
+<div class="pair"><div class="zh">在下一節中，我們將介紹與人類回饋強化學習（RLHF）和DPO相關的概念。這部分將涵蓋本章最後一節中的新參數和想法。</div><details class="en"><summary>原文</summary><div class="en-text">In the next section, we will introduce concepts related to Reinforcement<br>Learning from Human Feedback (RLHF) and DPO. This will cover new<br>parameters and ideas that are implemented in the final section of this<br>chapter.</div></details></div>
+<h3 id="s7">偏好對齊技術<span class="en-title"> · Preference alignment</span></h3>
+<div class="pair"><div class="zh">偏好對齊技術將模型微調於偏好資料集。以下我們將提供這個領域的概述，然後專注於我們將實現的技術：直接偏好最佳化（DPO）。</div><details class="en"><summary>原文</summary><div class="en-text">Preference alignment regroups techniques to fine-tune models on<br>preference data. In this section, we provide an overview of this field and<br>then focus on the technique we will implement: Direct Preference<br>Optimization (DPO).</div></details></div>
+<h4 id="s8">人工回饋強化學習（RLHF）<span class="en-title"> · Reinforcement Learning from Human Feedback</span></h4>
+<div class="pair"><div class="zh">強化學習從人類回饋（RLHF）結合了強化學習（RL）和人類輸入，以便將模型與人類偏好和價值對齊。 RLHF 是傳統RL方法的回應之一，特別是指定複雜任務的獎勵函數的困難，以及工程師設計的獎勵可能與預期目標不符。<br><br>RLHF 的起源可以追溯到偏好基礎強化學習（PbRL）領域中，Akrour 等人和 Cheng 等人在 2011 年獨立提出 PbRL。 PbRL 目的是從質性回饋中推斷目標，而不是依賴定量獎勵信號。這種方法解決了傳統 RL 的一些限制，其中定義適當的獎勵函數可能會很困難且容易受到獎勵攻擊或未預期行為。<br><br>RLHF 的名稱後來在 2021-2022 年被 coin，隨著 LLMS 在訓練上越來越受歡迎。然而核心想法已經發展了多年。 Christiano 等人的 2017 年一篇 seminal papers 顯示了從人類偏好中學習獎勵模型，並使用它們來訓練 RL 代理人。這個工作表明 RLHF 可以與手工設計的獎勞匹配或超越，但需要顯著少的人力。<br><br>RLHF 的核心是通過反覆改進獎勵模型和策略：</div><details class="en"><summary>原文</summary><div class="en-text">Reinforcement Learning from Human Feedback (RLHF) combines<br>reinforcement learning (RL) with human input to align models with<br>human preferences and values. RLHF emerged as a response to challenges<br>in traditional RL methods, particularly the difficulty of specifying reward<br>functions for complex tasks and the potential for misalignment between<br>engineered rewards and intended objectives.<br>The origins of RLHF can be traced back to the field of preference-based<br>reinforcement learning (PbRL), which was independently introduced by<br>Akrour et al. and Cheng et al. in 2011. PbRL aimed to infer objectives from<br>qualitative feedback, such as pairwise preferences between behaviors,<br>rather than relying on quantitative reward signals. This approach addressed<br>some of the limitations of conventional RL, where defining appropriate<br>reward functions can be challenging and prone to reward hacking or<br>unintended behaviors.<br>The term RLHF was coined later, around 2021-2022, as the approach<br>gained prominence in the context of training LLMs. However, the core<br>ideas had been developing for years prior. A seminal paper by Christiano et<br>al. in 2017 demonstrated the effectiveness of learning reward models from<br>human preferences and using them to train RL agents. This work showed<br>that RLHF could match or exceed the performance of agents trained on<br>hand-engineered rewards, but with significantly less human effort.<br>At its core, RLHF works by iteratively improving both a reward model and<br>a policy:</div></details></div>
+<div class="pair"><div class="zh">獎勵模型學習：RLHF 不使用預先定義的獎勵函數，而是從人類回饋中學習一個獎勵模型。這通常通過將不同的答案呈現給人們，並請他們指出哪一個他們偏好。這些偏好用於訓練獎勵模型，常使用Bradley-Terry 模型或相似的方法將偏好映射到底層utility 函數中。<br><br>策略最佳化：使用學習的獎勵模型，可以使用標準RL 演演算法來最佳化策略。這個策略生成新的行為，以最大化預測的獎勵從學習的模型中。<br><br>迭代改進：隨著策略的改進，它生成的新行為可以由人類評估，導致對獎勵模型的改進。這個循環繼續，理想結果是策略與人類偏好相Align。<br><br>RLHF 的一個關鍵innovation 是它處理高成本的人類回饋的方法，而不是需要常態的人類監控，RLHF 允許非同步和稀疏回饋。<br><br>學習的獎勵模型作為人類偏好的代理，使得 RL 演演算法能夠持續訓練，不需要對每個動作進行直接的人類輸入。<br><br>例如，圖 6.4 顯示了 Proximal Policy Optimization（PPO）演演算法的一個高級概述，這是RLHF 中最流行的演演算法之一。在這裡，獎勵模型用於評分由訓練模型生成的文本。這個獎勞被規範化為一個 Kullback-Leibler（KL）divergence因子，以確保 token 分佈與訓練前模型（frozen 模型）的分佈相似。</div><details class="en"><summary>原文</summary><div class="en-text">Reward model learning: Instead of using a pre-defined reward<br>function, RLHF learns a reward model from human feedback. This is<br>typically done by presenting humans with different answers and asking<br>them to indicate which one they prefer. These preferences are used to<br>train a reward model, often using a Bradley-Terry model or similar<br>approaches that map preferences to underlying utility functions.<br>Policy optimization: With the learned reward model, standard RL<br>algorithms can be used to optimize a policy. This policy generates new<br>behaviors that aim to maximize the predicted rewards from the learned<br>model.<br>Iterative improvement: As the policy improves, it generates new<br>behaviors that can be evaluated by humans, leading to refinements in<br>the reward model. This cycle continues, ideally resulting in a policy<br>that aligns well with human preferences.<br>A key innovation in RLHF is its approach to handling the high cost of<br>human feedback. Rather than requiring constant human oversight, RLHF<br>allows for asynchronous and sparse feedback.<br>The learned reward model serves as a proxy for human preferences,<br>enabling the RL algorithm to train continuously without direct human input<br>for every action.<br>As an example, Figure 6.4 shows a high-level view of the Proximal Policy<br>Optimization (PPO) algorithm, which is one of the most popular RLHF<br>algorithms. Here, the reward model is used to score the text that is<br>generated by the trained model. This reward is regularized by an additional<br>Kullback-Leibler (KL) divergence factor, ensuring that the distribution of<br>tokens stays similar to the model before training (frozen model).</div></details></div>
+<div class="pair"><div class="zh">圖 6.4 - 高級概觀：偏好對齊的 PPO 演演算法<br>雖然 RLHF 已經證明瞭對人類偏好的有效性，但它面臨挑戰，因為其迭代性和依賴於獨立獎勵模型，這可能會導致計算成本高昂且不穩定。儘管RLHF 演演算法在理論上優於其他方法，但實驗結果也表明了它們相比簡單方法的下降表現。其中一個獲得廣泛關注的方法是 DPO。</div><details class="en"><summary>原文</summary><div class="en-text">        Figure 6.4 - High-level view of the PPO algorithm for preference alignment<br>While RLHF has proven effective for aligning AI systems with human<br>preferences, it faces challenges due to its iterative nature and reliance on a<br>separate reward model, which can be computationally expensive and<br>potentially unstable. Despite theoretical superiority, RLHF algorithms have<br>also experimentally underperformed compared to simpler approaches. One<br>such approach that has gained significant attention is DPO.</div></details></div>
+<h4 id="s9">直接偏好最佳化（DPO）<span class="en-title"> · Direct Preference Optimization</span></h4>
+<div class="pair"><div class="zh">由 Rafailov 等人在 2023 年的論文 Direct Preference Optimization: Your Language Model is Secretly a Reward Model 中提出 DPO，提供了一個傳統 RLHF 方法的簡化替代方案。<br>DPO 的核心創新在於它對偏好學習問題的重新表述。與 RLHF 不同的是，它通常涉及訓練一個獨立的獎勵模型，然後使用強化學習演演算法如 PPO 微調語言模型，而 DPO 則採取更加直接的方法。<br>DPO 將標準 RLHF 目標，即最大化期望獎勵，subject to a KL-divergence constraint with a reference policy 的最優策略表達為閉形式公式。這種數學見解允許 DPO 直接將偏好學習問題表達為策略的函數，從而消除了需要獨立獎勵模型或複雜強化學習演演算法的需求。<br>在實際上，DPO 可以被實現為一個簡單的二元交叉熵損失函數，它直接作用於語言模型的輸出概率。這個損失函數鼓勵模型將偏好回應分配更高的概率，並將非偏好回應分配較低的概率，而保持 closeness 到一個 reference (frozen) 模型。reference 模型的重要性直接受到 beta 參數的控制，beta 在 0 和 1 之間。當 beta 等於 0 時，trained 模型將忽略 reference 模型，這意味著 trained 模型可以與 SFT 模型非常不同。在實踐中，一個值為 0.1 的 beta 是最常見的，但是這可以被調整，如我們在下一節中所看到。</div><details class="en"><summary>原文</summary><div class="en-text">Introduced by Rafailov et al. in their 2023 paper Direct Preference<br>Optimization: Your Language Model is Secretly a Reward Model, DPO<br>offers a streamlined alternative to traditional RLHF methods.<br>DPO&#x27;s core innovation lies in its reformulation of the preference learning<br>problem. Unlike RLHF, which typically involves training a separate reward<br>model and then using reinforcement learning algorithms like PPO to fine-<br>tune the language model, DPO takes a more direct approach.<br>It derives a closed-form expression for the optimal policy under the<br>standard RLHF objective of maximizing expected reward subject to a KL-<br>divergence constraint with a reference policy. This mathematical insight<br>allows DPO to express the preference learning problem directly in terms of<br>the policy, eliminating the need for a separate reward model or complex<br>reinforcement learning algorithms.<br>In practical terms, DPO can be implemented as a simple binary cross-<br>entropy loss function that operates directly on the language model&#x27;s output<br>probabilities. This loss function encourages the model to assign higher<br>probability to preferred responses and lower probability to non-preferred<br>responses, while maintaining closeness to a reference (frozen) model. The<br>importance of the reference model is directly controlled via a beta<br>parameter between 0 and 1. The reference model is ignored when beta is<br>equal to 0, which means that the trained model can be very different from<br>the SFT one. In practice, a value of 0.1 is the most popular one, but this can<br>be tweaked, as we&#x27;ll see in the next section.</div></details></div>
+<div class="pair"><div class="zh">這種方法的簡單性使得可以使用標準梯度下降技術進行最佳化，不需要在訓練中從模型中採樣或實現複雜的RL演演算法。圖 6.5 顯示了 DPO 演演算法的高級概觀，相比於圖 6.4 讓訓練過程簡化了。</div><details class="en"><summary>原文</summary><div class="en-text">The simplicity of this approach allows optimization using standard gradient<br>descent techniques, without the need for sampling from the model during<br>training or implementing complex RL algorithms. Figure 6.5 shows a high-<br>level view of the DPO algorithm, greatly simplifying the training process<br>compared to Figure 6.4.</div></details></div>
+<div class="pair"><div class="zh">圖 6.5 - 偏好對齊的 DPO 演演算法高級概觀</div><details class="en"><summary>原文</summary><div class="en-text">        Figure 6.5 - High-level view of the DPO algorithm for preference alignment</div></details></div>
+<div class="pair"><div class="zh">DPO有多種優點，相比傳統RLHF方法。正如之前所提到，它顯著簡化偏好學習管道，減少了與RLHF方法相關的工程複雜度。通過消除需要獨立獎勵模型和RL演演算法的需求，DPO</div><details class="en"><summary>原文</summary><div class="en-text">DPO has several advantages over traditional RLHF methods. As previously<br>mentioned, it significantly simplifies the preference learning pipeline,<br>reducing the engineering complexity associated with RLHF methods. By<br>eliminating the need for a separate reward model and RL algorithms, DPO</div></details></div>
+<div class="pair"><div class="zh">RLHF 方法比傳統的 RLHF 方法更為計算效率。當使用 LoRA、QLoRA 這些 adapter 時，固定的模型和已經訓練好的模型不需要分開。實際上，因為我們只訓練 adapter，已經訓練好的模型並未被修改。這樣可以只載入一個模型，而不是兩個，這樣可以節省額外的 VRAM。<br><br>儘管簡單，但 DPO 方法通常能夠與複雜的 RLHF 方法匹配性能。此外，它也 tend to be more stable during training and less sensitive to hyperparameters。簡化的方法使 DPO easier to implement and scale, particularly for small teams without extensive RL knowledge.<br><br>而 RLHF 允許通過多個訓練回合進行逐步改進，並能夠動態地適應新的偏好，但 DPO 提供了一條更直接的路徑以達到相似的結果。選擇之間的 DPO 和 PPO-based RLHF 通常取決於實施的 ease 和可能的峰性能。對於大規模訓練運行，PPO-inspired 方法仍然有更高的性能天花板。但是，對於大多數應用，DPO 提供了大多數的性能優點，但在計算和工程成本方面較低。<br><br>RLHF 和 DPO 都從合成資料中受益。隨著 LLMs 的能力提高，它們可以生成品質和多樣性都超過人類創造的內容，這使得一個良好的循環出現，where better models produce better training data, which in turn leads to further model improvements。這種迴圈的本質允許多個訓練回合，每個回合都集中於不同的模型性能方面，並逐步增強跨越多個領域的能力。</div><details class="en"><summary>原文</summary><div class="en-text">is more computationally efficient than traditional RLHF approaches.<br>Particularly when trained with adapters (LoRA, QLoRA), the frozen and<br>trained models don&#x27;t have to be separated. Indeed, since we&#x27;re only training<br>adapters, the trained model is not modified. This allows us to only load one<br>model instead of two, which saves additional VRAM.<br>Despite its simplicity, DPO often matches the performance of more<br>complex RLHF methods. It also tends to be more stable during training and<br>less sensitive to hyperparameters. The simplified approach makes DPO<br>easier to implement and scale, particularly for small teams without<br>extensive RL knowledge.<br>While RLHF allows iterative improvement through multiple training rounds<br>and can dynamically adapt to new preferences, DPO offers a more<br>straightforward path to achieving similar results. The choice between DPO<br>and PPO-based RLHF often comes down to a trade-off between ease of<br>implementation and potential peak performance. For large-scale training<br>runs with millions of preference samples, PPO-inspired methods still have a<br>higher performance ceiling. However, for most applications, DPO provides<br>the majority of the performance benefits at a lower computational and<br>engineering cost.<br>Both RLHF and DPO benefit significantly from the integration of synthetic<br>data. As LLMs become more capable, they can generate data that surpasses<br>human-created content in quality and diversity. This enables a virtuous<br>cycle where better models produce better training data, which in turn leads<br>to further model improvements. The iterative nature of both approaches<br>allows multiple rounds of model refinement, each focusing on different<br>aspects of model performance and gradually enhancing capabilities across<br>various domains.</div></details></div>
+<div class="pair"><div class="zh">儘管 DPO 具有優點，但它並不無缺陷。像 RLHF 一樣，DPO 還需要配對偏好資料，這可能會很昂貴和耗時來收集。DPO 缺少一些與強化學習方法相關的理論保證。在某些情況下，RLHF 的增加靈活性可能是有利的，特別是在複雜任務或環境中。<br>然而，DPO 在大多數情況下都是最好的選擇，包括我們的雙 LL 模型例子。在下一節，我們將使用 Unsloth 實現它。</div><details class="en"><summary>原文</summary><div class="en-text">Despite its advantages, DPO is not without drawbacks. Like RLHF, DPO<br>still requires paired preference data, which can be expensive and time-<br>consuming to collect. DPO lacks some of the theoretical guarantees<br>associated with reinforcement learning approaches. There may be scenarios<br>where the added flexibility of RLHF is beneficial, particularly for complex<br>tasks or environments.<br>Nonetheless, DPO is ideal in most cases, including our twin LLM example.<br>In the next section, we will implement it using Unsloth.</div></details></div>
+<h3 id="s10">DPO 實作<span class="en-title"> · Implementing DPO</span></h3>
+<div class="pair"><div class="zh">在這個部分，我們將使用第 5 章中建立的 TwinLlama-3.1-8B 模型進行 DPO 微調。為了使用方便和最大化性能，我們將再次使用 Unsloth 庫實現 DPO。根據可用的 VRAM，您可以選擇 LoRA（高品質、速度和 VRAM 使用）或 QLoRA（低品質、速度和 VRAM 使用）。<br><br>這種技術，另外還有偏好對齊演算法在 TRL 和 Axolotl 中可用。<br><br>這個例子可以被視為 DPO 的進階應用。確實，我們的目的是模擬寫作風格與 DPO 自然傾向鼓勵正式語言相衝突。這是部分因為選擇答案通常比拒絕答案更正式。在實踐中，這將迫使我們進行輕微微調，使用低學習率和epochs數量。<br><br>要找到最佳的超參數，我們已經訓練了 20 多個模型，並在一組問題上比較了他們的輸出，包括「Write a paragraph to introduce supervised fine-tuning。」這樣允許我們選擇適合這個任務的模型和參數。<br><br>依賴項與第 5 章中的 SFT 相同，可以在 PacktPublishing 的 GitHub  repository（https://github.com/PacktPublishing/LLM-Engineering）或 Unsloth 的 repo（https://github.com/unslothai/unsloth）中找到：<br><br>1. 首先，我們想訪問一個 gated 模型，並選擇性上傳我們微調的模型到 Hugging Face（https://huggingface.co/）。這需要我們登入一個帳戶。</div><details class="en"><summary>原文</summary><div class="en-text">In this section, we will DPO fine-tune the TwinLlama-3.1-8B model we<br>created in Chapter 5. For ease of use and to maximize performance, we will<br>again use the Unsloth library for our DPO implementation. Depending on<br>the available VRAM, you can choose between LoRA (higher quality, speed,<br>and VRAM usage) and QLoRA (lower quality, speed, and VRAM usage).<br>This technique, along with other preference alignment algorithms, is also<br>available in TRL and Axolotl.<br>This example can be seen as an advanced application of DPO. Indeed, our<br>objective of imitating a writing style conflicts with the natural tendency of<br>DPO to encourage formal language. This is partly due to the fact that<br>chosen answers are often more formal than rejected ones. In practice, this<br>will force us to do light fine-tuning, with a low learning rate and number of<br>epochs. To find the best hyperparameters, we trained over 20 models and<br>compared their outputs on a set of questions, including &quot;Write a paragraph<br>to introduce supervised fine-tuning.&quot; This allowed us to select the model<br>and parameters that worked best for this task.<br>The dependencies are the same as those in Chapter 5 with SFT and can be<br>found in the book&#x27;s GitHub repository<br>(https://github.com/PacktPublishing/LLM-<br>Engineering) or in Unsloth&#x27;s repo<br>(https://github.com/unslothai/unsloth):<br>  1. First, we want to access a gated model and (optionally) upload our<br>     fine-tuned model to Hugging Face<br>     (https://huggingface.co/). This requires us to log in to an</div></details></div>
+<pre class="code">    account. If you don&#x27;t have an account, you can create one and store
+    your API key (Settings | Access Tokens | Create new token) in the
+    .env file:</pre>
+<pre class="code">    HF_TOKEN = YOUR_API_KEY</pre>
+<div class="pair"><div class="zh">2. 確保您的 Comet ML API 金鑰也在 .env 文件中。<br>    否則，當訓練開始時，程式碼將會崩潰並引發錯誤。</div><details class="en"><summary>原文</summary><div class="en-text">    2. Make sure that your Comet ML API key is also in the .env file.<br>    Otherwise, the code will crash and raise an error when training starts.</div></details></div>
+<pre class="code">    COMET_API_KEY = YOUR_API_KEY</pre>
+<pre class="code">    3. Before we import all the necessary packages, we want to apply a patch
+    for the DPOTrainer class from TRL. This fixes the DPO logs in
+    notebook environments.</pre>
+<pre class="code">    from unsloth import PatchDPOTrainer
+    PatchDPOTrainer()</pre>
+<pre class="code">    4. We can now import the other libraries. The main difference between
+    DPO and SFT is the import of DPOConfig and DPOTrainer from TRL,
+    which are specific to DPO training.</pre>
+<pre class="code">    import os
+    import torch
+    from datasets import load_dataset
+    from transformers import TrainingArguments, TextStreamer
+    from unsloth import FastLanguageModel, is_bfloat16_supporte</pre>
+<div class="pair"><div class="zh">5. 這一步驟從第 5 章載入我們的微調模型。我們使用相同的配置，max_seq_length 為 2048。你可以啟用這個選項。</div><details class="en"><summary>原文</summary><div class="en-text">5. This step loads our fine-tuned model from Chapter 5. We use the same<br>    configuration with a max_seq_length of 2048. You can activate</div></details></div>
+<div class="pair"><div class="zh">使用 QLoRA 設置 load_in_4bit 為 True。接下來，我們將進行 LoRA DPO 微調以提高速度和品質。</div><details class="en"><summary>原文</summary><div class="en-text">    QLoRA by setting load_in_4bit to True. In the following, we will<br>    perform LoRA DPO fine-tuning for increased speed and quality.</div></details></div>
+<pre class="code">    max_seq_length = 2048
+    model, tokenizer = FastLanguageModel.from_pretrained(
+          model_name=&quot;mlabonne/TwinLlama-3.1-8B&quot;,
+          max_seq_length=max_seq_length,
+          load_in_4bit=False,
+    )</pre>
+<pre class="code">    6. Let&#x27;s now prepare the model for PEFT with the LoRA configuration.
+    We increase the rank (r) and lora_alpha from 32 (as it was in
+    Chapter 5) to 64. This will allow more expressive fine-tuning. We
+    keep a dropout of 0 for speed and we target every linear module as per
+    usual.</pre>
+<pre class="code">    model = FastLanguageModel.get_peft_model(
+          model,
+          r=32,
+          lora_alpha=32,
+          lora_dropout=0,
+          target_modules=[&quot;q_proj&quot;, &quot;k_proj&quot;, &quot;v_proj&quot;, &quot;up_proj&quot;
+    )</pre>
+<div class="pair"><div class="zh">7. 我們載入 llmtwin-dpo 資料集（訓練分割），該資料集包含我們的提示、被選中和被拒絕的回答。</div><details class="en"><summary>原文</summary><div class="en-text">7. We load the llmtwin-dpo dataset (training split), which contains our<br>  prompts, chosen, and rejected answers.</div></details></div>
+<pre class="code">     dataset = load_dataset(&quot;mlabonne/llmtwin-dpo&quot;, split=&quot;train</pre>
+<div class="pair"><div class="zh">8. 資料準備與第 5 章的監督式微調例大不相同。在這裡，我們有三元組，包括提示、被選中答案和被拒絕的回應。</div><details class="en"><summary>原文</summary><div class="en-text">8. The data preparation is significantly different from the SFT example in<br>    Chapter 5. Here, we have triples with a prompt, a chosen answer, and a</div></details></div>
+<div class="pair"><div class="zh">被拒絕的回答。在 Alpaca 聊天模板中，我們將每個個人訊息應用於 format_samples 函數。注意，指令是唯一需要聊天格式的：選擇和拒絕的回答只需要與句子末尾 (EOS)  token concatenate。最後，我們建立一個 95%/5% 的訓練/測試分割。</div><details class="en"><summary>原文</summary><div class="en-text">rejected answer. In the format_samples function, we apply the Alpaca<br>chat template to each individual message. Note that the instruction is<br>the only one that requires the chat format: chosen and rejected answers<br>only need to be concatenated with the end of sentence (EOS) token.<br>Finally, we create a train/test split with a 95%/5% ratio.</div></details></div>
+<pre class="code">alpaca_template = &quot;&quot;&quot;Below is an instruction that describes
+### Instruction:
+{}
+### Response:
+&quot;&quot;&quot;
+EOS_TOKEN = tokenizer.eos_token
+def format_samples(example):
+   example[&quot;prompt&quot;] = alpaca_template.format(example[&quot;pro
+   example[&quot;chosen&quot;] = example[&#x27;chosen&#x27;] + EOS_TOKEN
+   example[&quot;rejected&quot;] = example[&#x27;rejected&#x27;] + EOS_TOKEN
+   return {&quot;prompt&quot;: example[&quot;prompt&quot;], &quot;chosen&quot;: example[
+dataset = dataset.map(format_samples)
+dataset = dataset.train_test_split(test_size=0.05)</pre>
+<div class="pair"><div class="zh">9. 模型和資料現在準備好了，所以我們可以開始微調。<br>相比於監督式微調，還有幾個新的參數，如 ref_model 和 beta。因為我們使用 LoRA（或 QLoRA），所以我們不直接訓練模型，而是訓練適配器。這意味著我們可以使用原始模型（沒有適配器）作為參考，保存了大量 VRAM。beta 參數控制了參考模型的重要性。標準值 0.1 在大多數情況下都有效，但我們根據實驗結果將其設置為 0.5。這是因為已經訓練的模型使用正式語言且具有較低的值。將其靠近參考模型有助於解決這個問題。<br>學習率也較低（從 SFT 的 3e-4 到這裡的 2e-6）。我們訓練一個 epoch 而不是三個，max_seq_length 參數是</div><details class="en"><summary>原文</summary><div class="en-text">9. The model and data are now ready, so we can start fine-tuning.<br>Compared to SFT, there are a few new parameters, like ref_model and<br>beta. Since we&#x27;re using LoRA (or QLoRA), we don&#x27;t directly train the<br>model but instead the adapters. This means we can use the original<br>model (without adapters) as a reference, saving a lot of VRAM. The<br>beta parameter controls the importance of the reference model. A<br>standard value of 0.1 works well in most scenarios, but we decided to<br>increase it to 0.5 based on our experiments. This is due to the fact that<br>the trained model used formal language with lower values. Having it<br>closer to the reference model helps to fix this issue.<br>The learning rate is also lower (from 3e-4 for SFT to 2e-6 here). We<br>train for 1 epoch instead of 3, and the max_seq_length parameter is</div></details></div>
+<pre class="code">    now broken down into two new parameters: max_prompt_length
+    (prompt only) and max_length (prompt and answer). Note that we
+    also replaced the TrainingArguments class with DPOConfig.</pre>
+<pre class="code">   trainer = DPOTrainer(
+    model=model,
+    ref_model=None,
+    tokenizer=tokenizer,
+    beta=0.5,
+    train_dataset=dataset[&quot;train&quot;],
+    eval_dataset=dataset[&quot;test&quot;],
+    max_length=max_seq_length//2,
+    max_prompt_length=max_seq_length//2,
+    args=DPOConfig(
+      learning_rate=2e-6,
+      lr_scheduler_type=&quot;linear&quot;,
+      per_device_train_batch_size=2,
+      per_device_eval_batch_size=2,
+      gradient_accumulation_steps=8,
+      num_train_epochs=1,
+      fp16=not is_bfloat16_supported(),
+      bf16=is_bfloat16_supported(),
+      optim=&quot;adamw_8bit&quot;,
+      weight_decay=0.01,
+      warmup_steps=10,
+      output_dir=&quot;output&quot;,
+      eval_strategy=&quot;steps&quot;,
+      eval_steps=0.2,
+      logging_steps=1,
+      report_to=&quot;comet_ml&quot;,
+      seed=0,
+    ),
+   )
+   trainer.train()</pre>
+<div class="pair"><div class="zh">10. 訓練模型後，我們可以快速進行一次 sanity 檢查。這個步驟類似於 SFT 範例。它準備模型進行推論，並生成對提示的回應。</div><details class="en"><summary>原文</summary><div class="en-text">10. Once the model is trained, we can run it for a quick sanity check. This<br>    step is similar to the SFT example. It prepares the model for inference<br>    and generates a response to a prompt.</div></details></div>
+<pre class="code">FastLanguageModel.for_inference(model)
+message = alpaca_template.format(&quot;Write a paragraph to intr
+inputs = tokenizer([message], return_tensors=&quot;pt&quot;).to(&quot;cuda
+text_streamer = TextStreamer(tokenizer)
+_ = model.generate(**inputs, streamer=text_streamer, max_ne</pre>
+<div class="pair"><div class="zh">11. 訓練好的 DPO 模型回傳以下回應：</div><details class="en"><summary>原文</summary><div class="en-text">11. The trained DPO model returns the following response:</div></details></div>
+<div class="pair"><div class="zh">監督式微調是一種用於提高模型性能的方法。</div><details class="en"><summary>原文</summary><div class="en-text">Supervised fine-tuning is a method used to enhance the perf</div></details></div>
+<div class="pair"><div class="zh">我們可以將其與 SFT 模型提供的答案進行比較。</div><details class="en"><summary>原文</summary><div class="en-text">We can compare it with the answer provided by the SFT model:</div></details></div>
+<div class="pair"><div class="zh">監督式微調是一種用於提高語言模型的方法。</div><details class="en"><summary>原文</summary><div class="en-text">            Supervised fine-tuning is a method used to enhance a language m</div></details></div>
+<div class="pair"><div class="zh">DPO 模型提供的答案既更加準確又更接近期望的寫作風格。它正確地識別預訓練語言模型為 SFT 的來源模型。此外，它還提到域或任務專門微調，而不是與「人類期望」進行對齊，這是偏好對齊的階段之一。答案也較不正式，類似於在博客文章中使用。<br><br>12. 最後一步驟是將訓練模型本地保存，並推送到 Hugging Face Hub。</div><details class="en"><summary>原文</summary><div class="en-text">The DPO model provides an answer that is both more accurate and<br>closer to the desired writing style. It correctly identifies pre-training<br>language models as source models for SFT. It also mentions domain<br>or task-specific finetunes instead of alignment with &quot;human<br>expectations,&quot; which is closer to the preference alignment stage. The<br>answer is also less formal and something we would use in a blog<br>post.<br>12. Finally, the last step consists of saving the trained model locally and<br>pushing it to the Hugging Face Hub.</div></details></div>
+<pre class="code">model.save_pretrained_merged(&quot;model&quot;, tokenizer, save_metho</pre>
+<div class="pair"><div class="zh">恭喜！我們已經訓練和匯出我們的 DPO 模型。現在它可在 Hugging Face Hub 上找到。</div><details class="en"><summary>原文</summary><div class="en-text">Congratulations! We have trained and exported our DPO model. It is now<br>available on the Hugging Face Hub at</div></details></div>
+<div class="pair"><div class="zh">https://huggingface.co/mlabonne/TwinLlama-3.1-8B-DPO。相比於監督式微調，DPO還需要追蹤一些額外的指標。在圖 6.6 中，您可以找到 Comet ML 的主要指標。您可以使用以下 URL 公開訪問它：https://www.comet.com/mlabonne/llm-twin-training/</div><details class="en"><summary>原文</summary><div class="en-text">https://huggingface.co/mlabonne/TwinLlama-3.1-8B-<br>DPO. Compared to SFT, DPO has a few additional metrics that need to be<br>tracked during training. Figure 6.6 shows the Comet ML dashboard with<br>the main metrics. You can publicly access it using the following URL:<br>https://www.comet.com/mlabonne/llm-twin-training/</div></details></div>
+<div class="pair"><div class="zh">圖 6.6 - 使用 Comet ML 進行實驗追蹤，DPO 指標<br>    讓我們回顧這些指標：<br>    訓練損失：我們仍然希望損失持續下降平均值。注意，它可能會快速下降到零，這意味著模型已經被微調。</div><details class="en"><summary>原文</summary><div class="en-text">    Figure 6.6 - Experiment tracking in Comet ML with DPO metrics<br>    Let&#x27;s review these metrics:<br>    Training loss: We still want the loss to continuously decrease on<br>    average. Note that it can rapidly fall to zero, meaning that the model is</div></details></div>
+<div class="pair"><div class="zh">不再學習任何事情。這種行為並不一定導致過度適合或壞模型，但需要緊密監控。<br>驗證損失：同樣可以說，驗證損失也是一樣。<br>梯度規模：我們期望小的梯度規模少數尖峰。<br>獎勵：我們有兩種不同的獎勵：被選中和被拒絕。這些獎勵對應於訓練和參考模型輸出之間的平均差異。隨著時間的推移，我們期望模型選擇被選中的答案並拒絕被拒絕的答案，這意味著這兩個獎勵之間的差異應該增加。這種差異直接受到邊緣指標的追蹤，定義為被選中和被拒絕獎勵之間的差異。<br>準確率：這個指標代表模型正確識別被選中的答案的百分比。我們希望在訓練過程中逐漸增加這個準確率，但不需要達到 100%。如果準確率達到 100%，尤其是如果它很快就達到，這可能表明偏好資料集太容易了，而 LL 模型仍然可以從這種資料集中學習，但可能有益於添加更多挑戰的例子。<br>總的來說，DPO 是 SFT 的監控和 debug 更困難，因為它涉及參考模型。然而，它也比 PPO 和其他 RLHF 演演算法更容易使用，只要你擁有一個高品質的偏好資料集和一個強大的微調模型，你可以嘗試不同的排名、beta 參數、學習率和 epoch 數量，以找到最適合你的偏好。</div><details class="en"><summary>原文</summary><div class="en-text">no longer learning anything. This behavior doesn&#x27;t necessarily lead to<br>overfitting or bad models but needs to be monitored closely.<br>Validation loss: The same thing can be said about the validation loss.<br>We expect a small gap compared to the training loss.<br>Gradient norm: We expect small gradient norms with few spikes.<br>Rewards: We have two different rewards: chosen and rejected. They<br>correspond to the mean difference between the log probabilities output<br>by the trained and reference models. Over time, we expect the model<br>to choose the chosen answers and reject the rejected answers, which<br>means that the gap between them should increase. This difference is<br>directly tracked by the margins metric, defined as the difference<br>between chosen and rejected rewards. A well-trained model&#x27;s margin<br>will quickly increase and then plateau.<br>Accuracies: This metric represents the percentage of times the model<br>correctly identifies the chosen answers. We want this accuracy to<br>gradually increase during training, but it doesn&#x27;t need to reach 100%.<br>An accuracy of 100%, especially if it&#x27;s achieved quickly, indicates that<br>the preference dataset might be too easy for the model. While the LLM<br>can still learn from such a dataset, it might be beneficial to add more<br>challenging examples.<br>In general, DPO is slightly harder to monitor and debug than SFT because<br>it&#x27;s a more complex process, involving a reference model. However, it&#x27;s<br>also significantly easier to use than PPO and other RLHF algorithms. As<br>long as you have a high-quality preference dataset and a strong fine-tuned<br>model, you can experiment with different ranks, beta parameters, learning<br>rates, and number of epochs to see which experiment best captures your<br>preferences.</div></details></div>
+<div class="pair"><div class="zh">這章的目的是不是自動評估模擬寫作風格的模型。可能的解決方案是比較不同模型（SFT 和 DPO）生成文本中的單字分佈與我們的基準資料集。在這個例子中，我們預期 SFT 模型將輸出許多在 GPT-4o-mini 中過度表示的單字（例如「delve into」。DPO 模型所輸出的分佈應該與被選中的答案更加相似。</div><details class="en"><summary>原文</summary><div class="en-text">While this is not the purpose of this chapter, it is possible to automate the<br>evaluation of models designed to imitate a writing style. A possible solution<br>consists of comparing the distribution of words in the text generated by<br>different models (SFT and DPO) with our ground-truth dataset. In this<br>example, we expect the SFT model to output a lot of words that are<br>overrepresented in GPT-4o-mini (like &quot;delve into&quot;). The distribution output<br>by our DPO model should be a lot closer to the chosen answers.</div></details></div>
+<h3 id="s11">總結<span class="en-title"> · Summary</span></h3>
+<div class="pair"><div class="zh">本章探討偏好對齊技巧，以提高LLMs。它引入了偏好資料集的概念，解釋其結構和重要性在捕捉微妙的人類偏好。我們實現了一個自定義偏好資料生成管道，比較原始和AI生成的文本從真實文章中。這個管道可以重複使用和根據您的用例進行自定義。<br><br>我們還提供了RLHF演進的概述，導致DPO作為一個更簡單和高效的替代方案。最後，我們使用Unsloth庫對TwinLlama-3.1-8B模型進行微調，從第5章中引入DPO。我們的逐步教程提供了實際訓練模型的指令，以及關鍵差異於SFT。最終模型可在Hugging Face Hub上找到。<br><br>下一章將探討LLM評估的重要主題，解決挑戰和當前方法在評估LLM性能。我們將涵蓋建立特定領域評估集、瞭解評估仍然是該領域的一個持續問題，並引入使用較大模型來評估較小模型（LLM-as-a-judge）的概念。最後，章節將結束於一個全面評估管道，提供了一個有結構的框架以實現一致和有效的LLM評估。</div><details class="en"><summary>原文</summary><div class="en-text">This chapter explored preference alignment techniques for improving<br>LLMs. It introduced the concept of preference datasets, explaining their<br>structure and importance in capturing nuanced human preferences. We<br>implemented our own custom preference data generation pipeline by<br>comparing original and AI-generated text from real articles. This pipeline<br>can be reused and customized based on your use case.<br>We also provided an overview of the evolution of RLHF, leading to the<br>introduction of DPO as a simpler and more efficient alternative. Finally, we<br>implemented DPO using the Unsloth library to fine-tune our TwinLlama-<br>3.1-8B model from Chapter 5. Our step-by-step tutorial gave practical<br>instructions for training the model, as well as highlighting key differences<br>from SFT. The final model is available on the Hugging Face Hub.<br>In the next chapter, we will explore the crucial topic of LLM evaluation,<br>addressing the challenges and current approaches in assessing LLM<br>performance. We&#x27;ll cover the creation of domain-specific evaluation sets,<br>examine why evaluation remains a persistent problem in the field, and<br>introduce the concept of using larger models to evaluate smaller ones<br>(LLM-as-a-judge). The chapter will conclude with a comprehensive<br>evaluation pipeline, providing a structured framework for consistent and<br>effective LLM evaluation.</div></details></div>
+<h3 id="s12">參考文獻<span class="en-title"> · References</span></h3>
+<pre class="code">     Rafael Rafailov et al.. &quot;Direct Preference Optimization: Your
+     Language Model is Secretly a Reward Model.&quot; arXiv preprint
+     arXiv:2305.18290, May 2023.
+     Timo Kaufmann et al.. &quot;A Survey of Reinforcement Learning from
+     Human Feedback.&quot; arXiv preprint arXiv:2312.14925, December 2023.
+     Anthropic. &quot;GitHub - anthropics/hh-rlhf: Human preference data for
+     &quot;Training a Helpful and Harmless Assistant with Reinforcement
+     Learning from Human Feedback&quot;.&quot; github.com, 2022,
+     https://github.com/anthropics/hh-rlhf.
+     Nisan Stiennon et al.. &quot;Learning to summarize from human feedback.&quot;
+     arXiv preprint arXiv:2009.01325, September 2020.
+     Intel(R) Neural Compressor. &quot;Supervised Fine-Tuning and Direct
+     Preference Optimization on Intel Gaudi2.&quot; medium.com, March 26,
+     2024, https://medium.com/intel-analytics-
+     software/the-practice-of-supervised-finetuning-
+     and-direct-preference-optimization-on-habana-
+     gaudi2-a1197d8a3cd3.
+     Argilla. &quot;GitHub - argilla-io/distilabel.&quot; github.com, August 23,
+     2024, https://github.com/argilla-io/distilabel.
+     Databricks. &quot;Enhancing LLM-as-a-Judge with Grading Notes.&quot;
+     databricks.com, July 22, 2024,
+     https://www.databricks.com/blog/enhancing-llm-
+     as-a-judge-with-grading-notes.
+     Akrour, Riad &amp; Schoenauer, Marc &amp; Sebag, Michèle. (2011).
+     Preference-Based Policy Learning. 12-27. 10.1007/978-3-642-23780-</pre>
+<div class="pair en-only"><div class="zh"><span class="flag-keep">參考文獻保留原文</span></div><div class="en-text">5_11.<br>Cheng, Weiwei &amp; Fürnkranz, Johannes &amp; Hüllermeier, Eyke &amp; Park,<br>Sang-Hyeun. (2011). Preference-Based Policy Iteration: Leveraging<br>Preference Learning for Reinforcement Learning. 312-327.<br>10.1007/978-3-642-23780-5_30.<br>Paul Christiano et al.. &quot;Deep reinforcement learning from human<br>preferences.&quot; arXiv preprint arXiv:1706.03741, June 2017.<br>Long Ouyang et al.. &quot;Training language models to follow instructions<br>with human feedback.&quot; arXiv preprint arXiv:2203.02155, March 2022.<br>John Schulman et al.. &quot;Proximal Policy Optimization Algorithms.&quot;<br>arXiv preprint arXiv:1707.06347, July 2017.<br>unslothai. &quot;GitHub - unslothai/unsloth: Finetune Llama 3.1, Mistral,<br>Phi &amp; Gemma LLMs 2-5x faster with 80% less memory.&quot; github.com,<br>August 21, 2024,<br>https://github.com/unslothai/unsloth.</div></div>
+<h3 id="s13">加入本書 Discord 社群<span class="en-title"> · Join our book&#x27;s Discord space</span></h3>
+<div class="pair"><div class="zh">加入我們社群的 Discord空間，與作者和其他讀者進行討論：<br>https://packt.link/llmeng</div><details class="en"><summary>原文</summary><div class="en-text">Join our community&#x27;s Discord space for discussions with the authors and<br>other readers:<br>https://packt.link/llmeng</div></details></div>
+</section>
+</main>
+<footer>
+來源：<code>ch6/336_PDFsam_LLM Engineer's Handbook - Paul Iusztin , Maxime Labonne.pdf</code>（第 6 章，45 頁）·
+翻譯模型：<code>sunapi386/llama-3-lexi-uncensored:8b</code>（kappa 機器 Ollama）· 產出日期 2026-10-08 ·
+機器翻譯僅供參考，術語與程式碼保留原文 · 離線單檔 HTML，直接用瀏覽器開啟。
+</footer>
+</body>
+</html>

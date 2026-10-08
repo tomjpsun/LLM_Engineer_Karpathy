@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ch6 偏好對齊 · 英中摘要對照（LLM Engineer's Handbook）</title>
+<style>
+:root{
+  --ink:#1e293b; --muted:#64748b; --bg:#f6f7fb; --card:#ffffff; --line:#e2e8f0;
+  --accent:#4f46e5; --accent-soft:#eef2ff;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--bg);color:var(--ink);line-height:1.7}
+header.top{background:linear-gradient(135deg,#312e81,#4f46e5);color:#fff;padding:26px 20px 18px}
+header.top h1{margin:0 0 4px;font-size:24px}
+header.top p{margin:0;color:#c7d2fe;font-size:13.5px}
+nav.tabs{position:sticky;top:0;z-index:10;background:#fff;border-bottom:1px solid var(--line);display:flex;gap:2px;overflow-x:auto;padding:0 12px}
+nav.tabs a{padding:10px 12px;font-size:13.5px;color:var(--muted);text-decoration:none;white-space:nowrap;border-bottom:2px solid transparent}
+nav.tabs a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+main{max-width:1100px;margin:0 auto;padding:18px 16px 60px}
+section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;margin-top:20px;scroll-margin-top:60px}
+section h2{margin:0 0 4px;font-size:19px}
+section h2 .n{display:inline-block;width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;text-align:center;line-height:28px;font-size:14px;margin-right:8px;vertical-align:2px}
+section h3{margin:18px 0 6px;font-size:15.5px;color:var(--accent)}
+.notice{margin-top:14px;border-left:4px solid #b45309;background:#fffbeb;padding:10px 14px;font-size:13.5px;border-radius:0 8px 8px 0}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:10px}
+@media (max-width:820px){.pair{grid-template-columns:1fr}}
+.pair .en,.pair .zh{border:1px solid var(--line);border-radius:10px;padding:12px 14px;font-size:14px;background:#fbfcfe}
+.pair .en{border-top:3px solid #3b82f6}
+.pair .zh{border-top:3px solid #10b981}
+.pair .tag{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;color:var(--muted);margin-bottom:4px}
+ul{margin:6px 0 0 18px;padding:0}
+li{margin:3px 0}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin-top:10px}
+th,td{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+th{background:var(--accent-soft);font-weight:600}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;background:#eef2f7;border:1px solid var(--line);border-radius:4px;padding:1px 5px}
+footer{max-width:1100px;margin:28px auto 40px;padding:0 16px;font-size:12.5px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>第 6 章 · Fine-Tuning with Preference Alignment — 英中摘要對照</h1>
+  <p>LLM Engineer's Handbook（Paul Iusztin &amp; Maxime Labonne）· 各節英文摘要＋繁體中文對照</p>
+</header>
+
+<nav class="tabs">
+  <a href="#s1">章節導覽</a>
+  <a href="#s2">偏好資料集</a>
+  <a href="#s2-3">生成與評估</a>
+  <a href="#s3">自建偏好資料集</a>
+  <a href="#s4">RLHF 與 DPO</a>
+  <a href="#s5">DPO 實作</a>
+  <a href="#s6">總結</a>
+</nav>
+
+<main>
+
+<div class="notice">⚠ 本頁是<b>逐節摘要對照</b>，不是原文逐段翻譯：英文欄為各節重點的英文摘要（原書文字濃縮改寫），中文欄為其繁體對照。原文與完整程式碼請看 <code>ch6/336_PDFsam_….pdf</code>；同系列對照頁見 <code>ch5/Ch5_Handbook_Bilingual_Digest.html</code>。</div>
+
+<!-- ===================== 1 章節導覽 ===================== -->
+<section id="s1">
+  <h2><span class="n">1</span>Chapter Overview 章節導覽</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      SFT adapts LLMs to specific tasks, but it struggles to capture the nuances of human preferences and the long tail of possible interactions. Preference alignment addresses this by injecting direct human or AI feedback into training. Among the many alignment techniques, the chapter focuses on Direct Preference Optimization (DPO) for its simplicity and efficiency. Plan: understand what data preference algorithms need, build a dataset that shifts the model's writing style toward more authentic text, then implement DPO to align the Chapter 5 model. By the end you can create preference datasets and align models with diverse techniques.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      SFT 能讓 LLM 學會特定任務，但難以捕捉人類偏好的細微差異與長尾互動。偏好對齊（preference alignment）藉由把人類或 AI 的直接回饋注入訓練來補足這一點。在眾多對齊技術中，本章聚焦簡單又高效的直接偏好最佳化（DPO）。路線：先理解偏好演算法需要什麼資料，再建一個能把模型文風調向更真實文字的資料集，最後實作 DPO 來對齊第 5 章訓練的模型。讀完你就能自建偏好資料集，並用多種技術對齊模型。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 2 偏好資料集 ===================== -->
+<section id="s2">
+  <h2><span class="n">2</span>Understanding Preference Datasets 理解偏好資料集</h2>
+
+  <h3>2.1 Preference data 偏好資料</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Preference datasets are less standardized than instruction datasets because each training algorithm needs different data. For DPO the structure is simple: every instruction is paired with one <b>chosen</b> (preferred) answer and one <b>rejected</b> answer; the goal is to push the model toward chosen-style responses. The rejected answer matters as much as the chosen one — it encodes the behavior to eliminate, which makes preference data flexible for tasks where quality is subjective: chatbots (naturalness, engagement), content moderation (borderline judgments), summarization (conciseness, coherence), code generation (efficiency, readability over mere correctness), creative writing (style, creativity), and translation (fluency beyond BLEU). Unlike Alpaca/ShareGPT, there is no standard storage format; most datasets use columns for instruction + two answers.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      偏好資料集不像指令資料集那樣有統一標準，因為不同訓練演算法需要的資料不同。DPO 的結構很單純：每個指令配一個<b>選中</b>（偏好）答案與一個<b>被拒</b>答案，目標是把模型推向選中風格的回覆。被拒答案和選中答案同樣重要——它標記了要消滅的行為，因此偏好資料在「品質偏主觀」的任務上特別有用：聊天機器人（自然、有互動感）、內容審核（邊界判斷）、摘要（簡潔、連貫）、程式生成（效率與可讀性高於單純正確）、創意寫作（風格與創意）、翻譯（BLEU 之外的流暢度）。不像 Alpaca／ShareGPT，偏好資料沒有標準儲存格式；多數資料集就是「指令＋兩個答案」的欄位結構。
+    </div>
+  </div>
+
+  <h3>2.2 Data quantity 資料數量</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      DPO needs fewer samples than SFT to move model behavior; required count grows with model size and task complexity (bigger models are more sample-efficient). Scale bands: LLM providers do general-purpose alignment with millions of samples and multiple alignment rounds; the open-source community typically works with 10k–100k pairs, which also helps "heal" merged or pruned models — DPO is generally less destructive than SFT. Task-specific alignment (writing style, refusals, identity claims) often needs only 100–10,000 pairs.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      DPO 要改變模型行為所需的樣本比 SFT 少；需求量隨模型大小與任務複雜度上升（大模型樣本效率更高）。規模分界：LLM 供應商做通用對齊用數百萬筆、多輪對齊；開源社群通常用 1 萬–10 萬筆配對，還能「治癒」合併或剪枝後的模型——DPO 整體比 SFT 更溫和、破壞性更低。特定任務對齊（改文風、拒答、身分宣稱）通常 100–10,000 筆就夠。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 3 生成與評估 ===================== -->
+<section id="s2-3">
+  <h2><span class="n">3</span>Data Generation and Evaluation 生成與評估</h2>
+
+  <h3>3.1 Generating preferences 生成偏好</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Generation and rating are one linked process. Start by surveying open-source preference datasets (e.g. Anthropic HH-RLHF, OpenAI's summarize-from-feedback) for reuse. DPO data comes in four build categories, trading off quality, cost, and scale: (1) human-generated + human-evaluated — best nuance, very expensive; (2) human-generated + LLM-evaluated — rarely worth it; (3) LLM-generated + human-evaluated — often the sweet spot, since people judge answers better than they write them; (4) LLM-generated + LLM-evaluated — fully synthetic, scalable and cheap, needs careful prompting and can inherit the generator's biases. Evaluation isn't always a separate step: preferences can emerge naturally by generating chosen answers with a strong model and rejected answers with a weaker or deliberately flawed one (how Intel/orca_dpo_pairs was built); comparing model output against human-written text is another route, useful for copying a style.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      生成與評分是一體流程。先盤點開源偏好資料集（如 Anthropic HH-RLHF、OpenAI 摘要回饋資料集）看能否沿用。DPO 資料有四種建置方式，在品質、成本、規模間取捨：(1) 人寫＋人評——最細膩但極貴；(2) 人寫＋ LLM 評——少見，不划算；(3) LLM 生成＋人類評——常是甜蜜點，因為人擅長「判斷」答案勝過「從零寫」；(4) LLM 生成＋ LLM 評——全合成、可擴充又便宜，但提示工程要謹慎，且會繼承生成模型的偏誤。評估不一定獨立成步驟：用強模型產選中答案、弱模型（或故意寫壞）產被拒答案，偏好就自然浮現（Intel/orca_dpo_pairs 就是這樣做的）；把模型輸出與人寫文字互比是另一條路，適合複製特定文風。
+    </div>
+  </div>
+
+  <h3>3.2 Tips for data generation 生成技巧</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Generation practices mirror instruction datasets: prompts should explicitly request diversity and complexity — e.g. ask for concise, detailed, and key-point variants of the same summary — to cover the range of human preferences. Vary sampling parameters: higher temperature yields creative, diverse outputs, lower temperature yields focused, deterministic ones; code generation wants low temperature, article writing tolerates high.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      生成手法與指令資料集一致：提示詞應明確要求多樣與複雜——例如同一摘要同時要「精簡版、詳盡版、重點版」——涵蓋人類偏好的光譜。並調整取樣參數：溫度高產出創意多樣，溫度低產出聚焦穩定；寫程式要低溫，寫文章可以高溫。
+    </div>
+  </div>
+
+  <h3>3.3 Evaluating preferences 偏好評估</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      LLM-based evaluation needs detailed criteria translated into a clear prompt. Two schemes: <b>absolute scoring</b> (rate each answer on a scale, e.g. 1–5, against rubrics) and <b>pairwise ranking</b> (show two answers, pick the better one). Pairwise comparisons track human judgment more closely; absolute scoring is easier to run at scale. Evaluation quality is bounded by the judging model's own capability and nuance.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      以 LLM 評估偏好，要把評分標準寫成清晰的提示。兩種做法：<b>絕對評分</b>（依量規給每個答案打分數，如 1–5）與<b>成對排序</b>（同時看兩個答案、選較好的一個）。成對比較與人類判斷的相關性更高；絕對評分則容易大規模執行。評估品質上限取決於評審模型自身的能力與細膩度。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 4 自建偏好資料集 ===================== -->
+<section id="s3">
+  <h2><span class="n">4</span>Creating Our Own Preference Dataset 自建偏好資料集</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      Goal: change the model's "voice" to match the original blog authors. Caveat from experiments: DPO tends to make models verbose and overly formal, so the dataset must be built surgically to install the articles' less formal style instead. The recipe reuses the Chapter 5 instruction-dataset code: instead of (instruction, answer) pairs, produce <b>triples</b> (instruction, rejected = model-generated, chosen = extract from the article). Because chosen answers are ground-truth text chunks, no LLM judge is needed — just two extra quality filters, on length and punctuation. Pipeline: load cleaned articles → clean text → extract sentence-safe chunks of 1,000–2,000 chars → generate triples with GPT-4o mini in JSON mode (a <code>PreferenceSet</code> class holds them) → filter short answers and invalid formats → build the preference dataset.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      目標：改變模型的「嗓音」，貼近原部落格作者。實驗提醒：DPO 容易讓模型變得冗長、用詞過於正式，所以資料集必須精準設計，讓模型改學文章較不正式的風格。做法沿用第 5 章的指令資料集程式碼：把（指令，答案）配對改成<b>三元組</b>（指令、被拒＝模型生成、選中＝文章原文節錄）。選中答案就是真值文本區塊，不需要 LLM 評審——只要多加兩道品質過濾：長度與標點。管線：載入清洗後文章 → 清洗文字 → 以不破壞句子為前提切出 1,000–2,000 字元區塊 → 用 GPT-4o mini 以 JSON 模式生成三元組（<code>PreferenceSet</code> 類別承接）→ 過濾過短與格式不合法的樣本 → 組成偏好資料集。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 5 RLHF 與 DPO ===================== -->
+<section id="s4">
+  <h2><span class="n">5</span>Preference Alignment: RLHF and DPO 偏好對齊：RLHF 與 DPO</h2>
+
+  <h3>5.1 RLHF 從人類回饋的強化學習</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      RLHF combines reinforcement learning with human input, fixing the old problem that hand-engineered reward functions are hard to specify and easy to game. Roots: preference-based RL (2011, Akrour/Cheng); the 2017 Christiano et al. result showed reward models learned from human pairwise preferences can match hand-designed rewards. The loop: learn a reward model from human preferences (Bradley-Terry style), optimize a policy against it (e.g. PPO), then iterate as the improving policy generates new behaviors for humans to rate. The reward model is a proxy enabling sparse, asynchronous feedback. In LLM practice (PPO), the reward is regularized by a KL-divergence term that keeps token distributions close to the frozen pre-training model. RLHF works, but the separate reward model plus iterative RL make it expensive and potentially unstable — and it has experimentally underperformed simpler methods.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      RLHF 把強化學習與人類輸入結合，解決了「手工設計獎勵函數既難寫又容易被鑽漏洞」的老問題。源流：2011 年的偏好式強化學習（Akrour、Cheng）；2017 年 Christiano 等人證明「從人類兩兩偏好學出的獎勵模型」能媲美手工設計的獎勵。迴圈：用人類偏好訓練獎勵模型（Bradley-Terry 類方法）→ 以強化學習（如 PPO）最佳化策略 → 策略變強後產生新行為再請人評 → 反覆迭代。獎勵模型是人類偏好的代理，讓回饋可以稀疏、非同步。在 LLM 上（PPO），獎勵會再加一項 KL 散度正則，把 token 分布拉住、不偏離凍結的預訓練模型。RLHF 有效，但「獨立獎勵模型＋迭代式 RL」昂貴且可能不穩——實驗上也常輸給更簡單的方法。
+    </div>
+  </div>
+
+  <h3>5.2 DPO 直接偏好最佳化</h3>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      DPO (Rafailov et al., 2023, "Your Language Model is Secretly a Reward Model") reformulates preference learning: from the standard RLHF objective (maximize reward under a KL constraint to a reference policy), it derives a closed-form optimal policy, so the problem can be expressed directly on the policy — no separate reward model, no RL loop. In practice it is a simple binary cross-entropy loss on the model's output probabilities: raise the likelihood of chosen answers, lower that of rejected ones, while staying near a frozen reference model controlled by a beta parameter (0–1; 0 ignores the reference, ~0.1 is the popular default). Benefits: trains with plain gradient descent (no sampling during training), less engineering, cheaper, more stable, less hyperparameter-sensitive, and often matches RLHF; with LoRA/QLoRA adapters only one model needs to be in memory since the base stays frozen. Drawbacks: still needs paired preference data, weaker theoretical guarantees, and PPO-style methods keep a higher performance ceiling for huge training runs — but for most applications DPO captures most of the benefit at far lower cost.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      DPO（Rafailov 等，2023，〈你的語言模型其實是獎勵模型〉）重新表述偏好學習：從標準 RLHF 目標（在對參考策略的 KL 限制下最大化獎勵）推導出最佳策略的封閉解，於是問題可以直接寫在策略上——不需要獨立獎勵模型，也不跑 RL 迴圈。實作上就是在模型輸出機率上做一個簡單的二元交叉熵損失：拉高選中答案的似然、壓低被拒答案，同時用 beta 參數（0–1）控制與凍結參考模型的距離（0 等於無視參考模型，實務常用約 0.1）。優點：純梯度下降即可訓練（訓練中不必取樣）、工程複雜度低、便宜、更穩定、對超參數不敏感，效能常追平 RLHF；配 LoRA／QLoRA 時基座凍結，只需載入一個模型，省 VRAM。缺點：仍需要成對偏好資料、理論保證較弱；超大規模訓練時 PPO 系方法上限更高——但對多數應用，DPO 以低得多的成本拿到大部分效益。
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 6 DPO 實作 ===================== -->
+<section id="s5">
+  <h2><span class="n">6</span>Implementing DPO in Practice DPO 實作</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      The hands-on run aligns the Chapter 5 model with Unsloth + TRL:
+      <ul>
+        <li>Log in to Hugging Face (gated model access, optional Hub upload).</li>
+        <li>Apply <code>PatchDPOTrainer()</code> from Unsloth to fix DPO logging, then import <code>DPOConfig</code>/<code>DPOTrainer</code> from TRL — the main import difference vs SFT.</li>
+        <li>Load <code>mlabonne/TwinLlama-3.1-8B</code> (the Chapter 5 fine-tune); QLoRA (4-bit) is available for tight VRAM, but the run uses LoRA DPO for speed and quality.</li>
+        <li>Prepare the model for PEFT with a LoRA configuration, then load the <code>llmtwin-dpo</code> training split.</li>
+        <li>Hyperparameters were tuned by training 20+ models: 1 epoch (not 3), modest batch size, periodic evaluation (<code>eval_strategy="steps"</code>, ~0.2 steps), lower learning rate; beta values shape formality of output (lower → more formal).</li>
+        <li>Train with <code>DPOTrainer</code>, sanity-check one generation — the output matches the target writing style better and still knows its true origins.</li>
+        <li>Save locally and push to the Hugging Face Hub.</li>
+      </ul>
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      實作以 Unsloth ＋ TRL 對齊第 5 章的模型：
+      <ul>
+        <li>登入 Hugging Face（存取 gated 模型、可選上傳到 Hub）。</li>
+        <li>先套 Unsloth 的 <code>PatchDPOTrainer()</code> 修正 DPO 日誌，再從 TRL 匯入 <code>DPOConfig</code>／<code>DPOTrainer</code>——與 SFT 最大的差異就在匯入。</li>
+        <li>載入 <code>mlabonne/TwinLlama-3.1-8B</code>（第 5 章微調成品）；VRAM 吃緊可用 QLoRA（4-bit），本例採 LoRA DPO 換速度與品質。</li>
+        <li>以 LoRA 設定準備 PEFT，載入 <code>llmtwin-dpo</code> 的訓練分割。</li>
+        <li>超參數靠訓練 20 多個模型調出：1 個 epoch（不是 3）、適中批次、定期評估（<code>eval_strategy="steps"</code>、約 0.2 步）、較低學習率；beta 值會影響輸出正式程度（越低越正式）。</li>
+        <li>用 <code>DPOTrainer</code> 訓練，抽一句生成健檢——輸出更貼近目標文風，且仍清楚知道自己真正的訓練來源。</li>
+        <li>存檔並上傳 Hugging Face Hub。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== 7 總結 ===================== -->
+<section id="s6">
+  <h2><span class="n">7</span>Summary 總結</h2>
+  <div class="pair">
+    <div class="en"><span class="tag">EN SUMMARY</span>
+      The chapter introduced preference datasets — their structure and their role in capturing nuanced human preferences — and implemented a custom preference-data pipeline comparing original vs AI-generated text from real articles, reusable for other use cases. It traced RLHF's evolution and presented DPO as the simpler, more efficient alternative, then implemented DPO with Unsloth to fine-tune TwinLlama-3.1-8B from Chapter 5, highlighting the key differences from SFT; the final model is on the Hugging Face Hub. Next chapter: LLM evaluation — domain-specific eval sets, why evaluation stays hard, LLM-as-a-judge, and a complete evaluation pipeline.
+    </div>
+    <div class="zh"><span class="tag">繁體對照</span>
+      本章介紹偏好資料集——結構與捕捉細膩人類偏好的角色——並實作自訂偏好資料管線：比較真實文章的原文與 AI 生成文本，管線可重用於其他用例。接著回顧 RLHF 的演進，帶出更簡單高效的 DPO，再用 Unsloth 實作 DPO 微調第 5 章的 TwinLlama-3.1-8B，點出與 SFT 的關鍵差異；成品已上 Hugging Face Hub。下一章：LLM 評估——領域專屬評估集、為何評估始終是難題、LLM-as-a-judge，以及完整的評估管線。
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  來源：<code>ch6/336_PDFsam_LLM Engineer's Handbook - Paul Iusztin , Maxime Labonne.pdf</code>（第 6 章，45 頁）· 本頁為摘要對照，非原文翻譯 · 離線單檔 HTML，直接用瀏覽器開啟。
+</footer>
+
+</body>
+</html>
